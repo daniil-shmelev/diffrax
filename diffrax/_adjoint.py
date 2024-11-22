@@ -887,9 +887,9 @@ def _loop_reversible_fwd(perturbed, y__args__terms, **kwargs):
     final_state, aux_stats = _loop_reversible(y__args__terms, **kwargs)
     ts = final_state.reversible_ts
     ts_final_index = final_state.reversible_save_index
-    y1 = final_state.save_state.ys[-1]
+    ys = final_state.save_state.ys
     solver_state1 = final_state.solver_state
-    return (final_state, aux_stats), (ts, ts_final_index, y1, solver_state1)
+    return (final_state, aux_stats), (ts, ts_final_index, ys, solver_state1)
 
 
 @_loop_reversible.def_bwd
@@ -912,15 +912,22 @@ def _loop_reversible_bwd(
     assert event is None
 
     del perturbed, init_state, t1, progress_meter, self, kwargs
-    ts, ts_final_index, y1, solver_state1 = residuals
+    ts, ts_final_index, ys, solver_state1 = residuals
     original_solver_state, z1 = solver_state1
     del residuals, solver_state1
 
     grad_final_state, _ = grad_final_state__aux_stats
-    # ReversibleAdjoint currently only allows SaveAt(t1=True) so grad_y1 should have
-    # the same structure as y1.
-    grad_y1 = grad_final_state.save_state.ys[-1]
-    grad_y1 = jtu.tree_map(_materialise_none, y1, grad_y1)
+    # If true we must be using SaveAt(t1=True)
+    t1_only = ys.shape[0] == 1
+    if t1_only:
+        y1 = ys[-1]
+        grad_ys = grad_final_state.save_state.ys[-1]
+    # If false then we must be using SaveAt(t0=True, steps=True)
+    else:
+        y1 = ys[ts_final_index]
+        grad_ys = grad_final_state.save_state.ys
+
+    grad_ys = jtu.tree_map(_materialise_none, ys, grad_ys)
     del grad_final_state, grad_final_state__aux_stats
 
     y, args, terms = y__args__terms
@@ -941,12 +948,17 @@ def _loop_reversible_bwd(
             )
             return step
 
-        ts_index, y1, solver_state, grad_y1, grad_z1, grad_args, grad_terms = state
+        ts_index, y1, solver_state, grad_ys, grad_z1, grad_args, grad_terms = state
         (first_step, f0), z1 = solver_state
 
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
-        ts_index = ts_index - 1
+        if t1_only:
+            grad_y1 = grad_ys
+            grad_y0 = jtu.tree_map(jnp.zeros_like, grad_y1)
+        else:
+            grad_y1 = grad_ys[ts_index]
+            grad_y0 = grad_ys[ts_index - 1]
 
         # TODO The solver steps switch between evaluating from z0
         # and y1. Therefore, we re-evaluate f0 outside of the base
@@ -966,17 +978,25 @@ def _loop_reversible_bwd(
         grad_y1 = (ω(grad_y1) + ω(grad_z1) - ω(grad_step_y1[3])).ω
 
         grad_step_z0 = vjp_fun_z0(grad_y1)
-        grad_y0 = (solver.l * ω(grad_y1)).ω
+        grad_y0 = (solver.l * ω(grad_y1) + ω(grad_y0)).ω
         grad_z0 = (ω(grad_z1) - solver.l * ω(grad_y1) + ω(grad_step_z0[3])).ω
 
         grad_terms = (ω(grad_terms) - ω(grad_step_y1[0]) + ω(grad_step_z0[0])).ω
         grad_args = (ω(grad_args) - ω(grad_step_y1[4]) + ω(grad_step_z0[4])).ω
 
+        if t1_only:
+            grad_ys = grad_y0
+        else:
+            grad_ys = grad_ys.at[ts_index].set(grad_y1)
+            grad_ys = grad_ys.at[ts_index - 1].set(grad_y0)
+
+        ts_index = ts_index - 1
+
         return (
             ts_index,
             y0,
             ((first_step, f0), z0),
-            grad_y0,
+            grad_ys,
             grad_z0,
             grad_args,
             grad_terms,
@@ -990,14 +1010,19 @@ def _loop_reversible_bwd(
         ts_final_index,
         y1,
         (original_solver_state, z1),
-        grad_y1,
+        grad_ys,
         grad_z1,
         grad_args,
         grad_terms,
     )
 
     state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
-    _, _, _, grad_y0, grad_z0, grad_args, grad_terms = state
+    _, _, _, grad_ys, grad_z0, grad_args, grad_terms = state
+    if t1_only:
+        grad_y0 = grad_ys
+    else:
+        grad_y0 = grad_ys[0]
+
     return (ω(grad_y0) + ω(grad_z0)).ω, grad_args, grad_terms
 
 
@@ -1032,10 +1057,17 @@ class ReversibleAdjoint(AbstractAdjoint):
     ):
         # `is` check because this may return a Tracer from SaveAt(ts=<array>)
         if eqx.tree_equal(saveat, SaveAt(t1=True)) is not True:
-            raise ValueError(
-                "Can only use `adjoint=ReversibleAdjoint()` with "
-                "`saveat=SaveAt(t1=True)`."
-            )
+            if eqx.tree_equal(saveat, SaveAt(steps=True)) is True:
+                raise ValueError(
+                    "If saving steps, include `t0` by "
+                    "`saveat=SaveAt(t0=True, steps=True)`."
+                )
+
+            elif eqx.tree_equal(saveat, SaveAt(t0=True, steps=True)) is not True:
+                raise ValueError(
+                    "Can only use `adjoint=ReversibleAdjoint()` with "
+                    "`saveat=SaveAt(t1=True)` or `saveat=SaveAt(t0=True, steps=True)`."
+                )
 
         if not isinstance(solver, Reversible):
             raise ValueError(
