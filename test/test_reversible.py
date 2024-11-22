@@ -21,7 +21,7 @@ class _VectorField(eqx.Module):
 
 
 @eqx.filter_value_and_grad
-def _loss(y0__args__term, solver, adjoint):
+def _loss(y0__args__term, solver, saveat, adjoint):
     y0, args, term = y0__args__term
 
     sol = diffrax.diffeqsolve(
@@ -32,10 +32,17 @@ def _loss(y0__args__term, solver, adjoint):
         dt0=0.01,
         y0=y0,
         args=args,
+        saveat=saveat,
         adjoint=adjoint,
         stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
     )
-    y1 = sol.ys
+    if eqx.tree_equal(saveat, diffrax.SaveAt(t1=True)) is True:
+        y1 = sol.ys
+    else:
+        final_index = sol.stats["num_accepted_steps"]
+        ys = cast(Array, sol.ys)
+        y1 = ys[: final_index + 1]
+
     return jnp.sum(cast(Array, y1))
 
 
@@ -122,11 +129,31 @@ def test_reversible_adjoint():
     base_solver = diffrax.Tsit5()
     reversible_solver = diffrax.Reversible(base_solver, l=0.999)
 
+    # Save y1 only
+    saveat = diffrax.SaveAt(t1=True)
+
     loss, grads_base = _loss(
-        y0__args__term, base_solver, adjoint=diffrax.RecursiveCheckpointAdjoint()
+        y0__args__term,
+        reversible_solver,
+        saveat,
+        adjoint=diffrax.RecursiveCheckpointAdjoint(),
     )
     loss, grads_reversible = _loss(
-        y0__args__term, reversible_solver, adjoint=diffrax.ReversibleAdjoint()
+        y0__args__term, reversible_solver, saveat, adjoint=diffrax.ReversibleAdjoint()
     )
 
+    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+
+    # Save steps
+    saveat = diffrax.SaveAt(t0=True, steps=True)
+
+    loss, grads_base = _loss(
+        y0__args__term,
+        reversible_solver,
+        saveat,
+        adjoint=diffrax.RecursiveCheckpointAdjoint(),
+    )
+    loss, grads_reversible = _loss(
+        y0__args__term, reversible_solver, saveat, adjoint=diffrax.ReversibleAdjoint()
+    )
     assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
