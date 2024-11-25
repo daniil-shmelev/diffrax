@@ -29,20 +29,20 @@ class Reversible(
     """
     Reversible solver method.
 
-    Allows any solver ([`diffrax.AbstractSolver`][]) to be made
-    algebraically reversible.
+    Allows any solver ([`diffrax.AbstractSolver`][]) to be made algebraically
+    reversible. The convergence order of the reversible solver is inherited from the
+    wrapped solver.
 
-    The convergence order of the reversible solver is inherited from the wrapped
-    solver.
+    Gradient calculation through the reversible solver is exact (up to floating
+    point errors) and backpropagation becomes a linear in time $O(t)$ and constant in
+    memory $O(1)$ algorithm.
 
-    Backpropagation through the reversible solver implies very low memory usage and
-    exact gradient calculation (up to floating point errors). This is implemented in
-    [`diffrax.ReversibleAdjoint`][] and passed to [`diffrax.diffeqsolve`][] as
-    `adjoint=diffrax.ReversibleAdjoint()`.
+    This is implemented in [`diffrax.ReversibleAdjoint`][] and passed to
+    [`diffrax.diffeqsolve`][] as `adjoint=diffrax.ReversibleAdjoint()`.
     """
 
     solver: AbstractSolver
-    l: RealScalarLike = 0.999
+    l: float = 0.999
 
     @property
     def term_structure(self):

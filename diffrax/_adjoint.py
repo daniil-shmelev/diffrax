@@ -1041,19 +1041,54 @@ def _loop_reversible_bwd(
 
 class ReversibleAdjoint(AbstractAdjoint):
     """
-    Backpropagate through [`diffrax.diffeqsolve`][] when using the
-    [`diffrax.Reversible`][] solver.
+    Backpropagate through [`diffrax.diffeqsolve`][] by using the reversible solver
+    method.
 
-    This method implies very low memory usage and exact gradient calculation (up to
-    floating point errors).
+    This method wraps the passed solver to create an algebraically reversible version
+    of that solver. In doing so, gradient calculation is exact (up to floating point
+    errors) and backpropagation becomes a linear in time $O(t)$ and constant in memory
+    $O(1)$ algorithm.
 
-    This will compute gradients with respect to the `terms`, `y0` and `args` arguments
-    passed to [`diffrax.diffeqsolve`][]. If you attempt to compute gradients with
-    respect to anything else (for example `t0`, or arguments passed via closure), then
-    a `CustomVJPException` will be raised. See also
-    [this FAQ](../../further_details/faq/#im-getting-a-customvjpexception)
-    entry.
+    The reversible adjoint can be used when solving ODEs/CDEs/SDEs and is
+    compatible with any [`diffrax.AbstractSolver`][]. Adaptive step sizes are also
+    supported.
+
+    !!! note
+
+        This adjoint can be less numerically stable than
+        [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.DirectAdjoint`][].
+        Stability can be largely improved by using [double (64bit) precision](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision)
+        and [smaller/adaptive step sizes](https://docs.kidger.site/diffrax/api/stepsize_controller/).
+
+    ??? cite "References"
+
+        This algorithm was developed in:
+
+        ```bibtex
+        @article{mccallum2024efficient,
+            title={Efficient, Accurate and Stable Gradients for Neural ODEs},
+            author={McCallum, Sam and Foster, James},
+            journal={arXiv preprint arXiv:2410.11648},
+            year={2024}
+        }
+        ```
+
+        And built on previous work introduced in:
+
+        ```bibtex
+        @article{kidger2021efficient,
+            title={Efficient and accurate gradients for neural sdes},
+            author={Kidger, Patrick and Foster, James and Li, Xuechen Chen and Lyons,
+            Terry},
+            journal={Advances in Neural Information Processing Systems},
+            volume={34},
+            pages={18747--18761},
+            year={2021}
+        }
+        ```
     """
+
+    l: float = 0.999
 
     def loop(
         self,
@@ -1079,13 +1114,16 @@ class ReversibleAdjoint(AbstractAdjoint):
                 "`saveat=SaveAt(t1=True)` or `saveat=SaveAt(steps=True)`."
             )
 
-        if not isinstance(solver, Reversible):
-            raise ValueError(
-                "Can only use `adjoint=ReversibleAdjoint()` with "
-                "`Reversible()` solver."
-            )
-
+        solver = Reversible(solver, self.l)
+        tprev = init_state.tprev
+        tnext = init_state.tnext
         y = init_state.y
+
+        init_state = eqx.tree_at(
+            lambda s: s.solver_state,
+            init_state,
+            solver.init(terms, tprev, tnext, y, args),
+        )
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
         init_state = _nondiff_solver_controller_state(
             self, init_state, passed_solver_state, passed_controller_state
@@ -1102,3 +1140,18 @@ class ReversibleAdjoint(AbstractAdjoint):
         )
         final_state = _only_transpose_ys(final_state)
         return final_state, aux_stats
+
+
+ReversibleAdjoint.__init__.__doc__ = """
+**Arguments:**
+
+- `l` - coupling parameter, defaults to `l=0.999`.
+
+The reversible solver introduces the coupled state $\{y_n, z_n\}_{n\geq 0}$ and the 
+coupling parameter $l\in (0, 1)$ mixes the states via $ly_n + (1-l)z_n$. This parameter 
+effects the stability of the reversible solver; decreasing it's value leads to greater 
+forward stability and increasing it's value leads to greater backward stability.
+
+In most cases the default value is sufficient. However, if you find yourself needing 
+greater control over stability it can be passed as an argument.
+"""
