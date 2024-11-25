@@ -942,14 +942,14 @@ def _loop_reversible_bwd(
     del diff_args, diff_terms, diff_z1
 
     def grad_step(state):
-        def solver_step(terms, t0, t1, y1, args):
-            step, _, _, _, _ = solver.solver.step(
-                terms, t0, t1, y1, args, (first_step, f0), False
+        def solver_step(terms, t0, t1, y1, args, original_solver_state):
+            step, _, _, original_solver_state, _ = solver.solver.step(
+                terms, t0, t1, y1, args, original_solver_state, False
             )
-            return step
+            return step, original_solver_state
 
         ts_index, y1, solver_state, grad_ys, grad_z1, grad_args, grad_terms = state
-        (first_step, f0), z1 = solver_state
+        original_solver_state, z1 = solver_state
 
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
@@ -960,17 +960,14 @@ def _loop_reversible_bwd(
             grad_y1 = grad_ys[ts_index]
             grad_y0 = grad_ys[ts_index - 1]
 
-        # TODO The solver steps switch between evaluating from z0
-        # and y1. Therefore, we re-evaluate f0 outside of the base
-        # solver to ensure the vf is correct.
-        # Can we avoid this re-evaluation?
-
-        f0 = solver.func(terms, t1, y1, args)
-        step_y1, vjp_fun_y1 = eqx.filter_vjp(solver_step, terms, t1, t0, y1, args)
+        step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
+            solver_step, terms, t1, t0, y1, args, original_solver_state, has_aux=True
+        )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
 
-        f0 = solver.func(terms, t0, z0, args)
-        step_z0, vjp_fun_z0 = eqx.filter_vjp(solver_step, terms, t0, t1, z0, args)
+        step_z0, vjp_fun_z0, _ = eqx.filter_vjp(
+            solver_step, terms, t0, t1, z0, args, original_solver_state, has_aux=True
+        )
 
         y0 = ((1 / solver.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
 
@@ -995,7 +992,7 @@ def _loop_reversible_bwd(
         return (
             ts_index,
             y0,
-            ((first_step, f0), z0),
+            (original_solver_state, z0),
             grad_ys,
             grad_z0,
             grad_args,
