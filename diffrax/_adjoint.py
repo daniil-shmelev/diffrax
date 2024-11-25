@@ -956,9 +956,9 @@ def _loop_reversible_bwd(
     del diff_args, diff_terms, diff_z1
 
     def grad_step(state):
-        def solver_step(terms, t0, t1, y1, args, original_solver_state):
+        def solver_step(t0, t1, original_solver_state, y0, args, terms):
             step, _, _, original_solver_state, _ = solver.solver.step(
-                terms, t0, t1, y1, args, original_solver_state, False
+                terms, t0, t1, y0, args, original_solver_state, False
             )
             return step, original_solver_state
 
@@ -976,26 +976,28 @@ def _loop_reversible_bwd(
             grad_y1 = grad_ys[ts_index]
             grad_y0 = grad_ys[ts_index - 1]
 
+        solver_step_fn = ft.partial(solver_step, t1, t0, original_solver_state)
         step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
-            solver_step, terms, t1, t0, y1, args, original_solver_state, has_aux=True
+            solver_step_fn, y1, args, terms, has_aux=True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
 
+        solver_step_fn = ft.partial(solver_step, t0, t1, original_solver_state)
         step_z0, vjp_fun_z0, _ = eqx.filter_vjp(
-            solver_step, terms, t0, t1, z0, args, original_solver_state, has_aux=True
+            solver_step_fn, z0, args, terms, has_aux=True
         )
 
         y0 = ((1 / solver.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
 
         grad_step_y1 = vjp_fun_y1(grad_z1)
-        grad_y1 = (ω(grad_y1) + ω(grad_z1) - ω(grad_step_y1[3])).ω
+        grad_y1 = (ω(grad_y1) + ω(grad_z1) - ω(grad_step_y1[0])).ω
 
         grad_step_z0 = vjp_fun_z0(grad_y1)
         grad_y0 = (solver.l * ω(grad_y1) + ω(grad_y0)).ω
-        grad_z0 = (ω(grad_z1) - solver.l * ω(grad_y1) + ω(grad_step_z0[3])).ω
+        grad_z0 = (ω(grad_z1) - solver.l * ω(grad_y1) + ω(grad_step_z0[0])).ω
 
-        grad_terms = (ω(grad_terms) - ω(grad_step_y1[0]) + ω(grad_step_z0[0])).ω
-        grad_args = (ω(grad_args) - ω(grad_step_y1[4]) + ω(grad_step_z0[4])).ω
+        grad_terms = (ω(grad_terms) - ω(grad_step_y1[2]) + ω(grad_step_z0[2])).ω
+        grad_args = (ω(grad_args) - ω(grad_step_y1[1]) + ω(grad_step_z0[1])).ω
 
         if t1_only:
             grad_ys = grad_y0
@@ -1123,7 +1125,9 @@ class ReversibleAdjoint(AbstractAdjoint):
             lambda s: s.solver_state,
             init_state,
             solver.init(terms, tprev, tnext, y, args),
+            is_leaf=_is_none,
         )
+
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
         init_state = _nondiff_solver_controller_state(
             self, init_state, passed_solver_state, passed_controller_state
@@ -1142,7 +1146,7 @@ class ReversibleAdjoint(AbstractAdjoint):
         return final_state, aux_stats
 
 
-ReversibleAdjoint.__init__.__doc__ = """
+ReversibleAdjoint.__init__.__doc__ = r"""
 **Arguments:**
 
 - `l` - coupling parameter, defaults to `l=0.999`.
