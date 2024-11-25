@@ -900,6 +900,7 @@ def _loop_reversible_bwd(
     y__args__terms,
     *,
     self,
+    saveat,
     solver,
     event,
     t0,
@@ -918,10 +919,13 @@ def _loop_reversible_bwd(
 
     grad_final_state, _ = grad_final_state__aux_stats
     # If true we must be using SaveAt(t1=True)
-    t1_only = ys.shape[0] == 1
-    if t1_only:
+    if saveat.subs.t1:
         y1 = ys[-1]
-        grad_ys = grad_final_state.save_state.ys[-1]
+        grad_y1 = grad_final_state.save_state.ys[-1]
+        ts_length = ts.shape[0]
+        ys_dim = ys.shape[1]
+        grad_ys = jnp.zeros((ts_length, ys_dim), dtype=ys.dtype)
+        grad_ys = grad_ys.at[ts_final_index].set(grad_y1)
     # If false then we must be using SaveAt(t0=True, steps=True)
     else:
         y1 = ys[ts_final_index]
@@ -953,12 +957,9 @@ def _loop_reversible_bwd(
 
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
-        if t1_only:
-            grad_y1 = grad_ys
-            grad_y0 = jtu.tree_map(jnp.zeros_like, grad_y1)
-        else:
-            grad_y1 = grad_ys[ts_index]
-            grad_y0 = grad_ys[ts_index - 1]
+
+        grad_y1 = grad_ys[ts_index]
+        grad_y0 = grad_ys[ts_index - 1]
 
         step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
             solver_step, terms, t1, t0, y1, args, original_solver_state, has_aux=True
@@ -981,11 +982,8 @@ def _loop_reversible_bwd(
         grad_terms = (ω(grad_terms) - ω(grad_step_y1[0]) + ω(grad_step_z0[0])).ω
         grad_args = (ω(grad_args) - ω(grad_step_y1[4]) + ω(grad_step_z0[4])).ω
 
-        if t1_only:
-            grad_ys = grad_y0
-        else:
-            grad_ys = grad_ys.at[ts_index].set(grad_y1)
-            grad_ys = grad_ys.at[ts_index - 1].set(grad_y0)
+        grad_ys = grad_ys.at[ts_index].set(grad_y1)
+        grad_ys = grad_ys.at[ts_index - 1].set(grad_y0)
 
         ts_index = ts_index - 1
 
@@ -1015,10 +1013,7 @@ def _loop_reversible_bwd(
 
     state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
     _, _, _, grad_ys, grad_z0, grad_args, grad_terms = state
-    if t1_only:
-        grad_y0 = grad_ys
-    else:
-        grad_y0 = grad_ys[0]
+    grad_y0 = grad_ys[0]
 
     return (ω(grad_y0) + ω(grad_z0)).ω, grad_args, grad_terms
 
