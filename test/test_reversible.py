@@ -363,20 +363,38 @@ def test_incorrect_solver():
         diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
         diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
     )
-    incompatible_solvers = (
-        diffrax.SemiImplicitEuler(),
-        diffrax.ReversibleHeun(),
-        diffrax.LeapfrogMidpoint(),
-    )
-    for solver in incompatible_solvers:
-        with pytest.raises(ValueError):
-            diffrax.diffeqsolve(
-                terms,
-                solver,
-                t0=0,
-                t1=5,
-                dt0=0.01,
-                y0=y0,
-                args=args,
-                adjoint=diffrax.ReversibleAdjoint(),
-            )
+    with pytest.raises(ValueError):
+        diffrax.diffeqsolve(
+            terms,
+            diffrax.SemiImplicitEuler(),
+            t0=0,
+            t1=5,
+            dt0=0.01,
+            y0=y0,
+            args=args,
+            adjoint=diffrax.ReversibleAdjoint(),
+        )
+
+    with pytest.raises(ValueError):
+        diffrax.diffeqsolve(
+            terms[0],
+            diffrax.ReversibleHeun(),
+            t0=0,
+            t1=5,
+            dt0=0.01,
+            y0=y0[0],
+            args=args,
+            adjoint=diffrax.ReversibleAdjoint(),
+        )
+
+    with pytest.raises(ValueError):
+        diffrax.diffeqsolve(
+            terms[0],
+            diffrax.LeapfrogMidpoint(),
+            t0=0,
+            t1=5,
+            dt0=0.01,
+            y0=y0[0],
+            args=args,
+            adjoint=diffrax.ReversibleAdjoint(),
+        )
