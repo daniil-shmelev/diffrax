@@ -1051,10 +1051,10 @@ class ReversibleAdjoint(AbstractAdjoint):
     Backpropagate through [`diffrax.diffeqsolve`][] using the reversible solver
     method.
 
-    This method wraps the passed solver to create an algebraically reversible version
-    of that solver. In doing so, gradient calculation is exact (up to floating point
-    errors) and backpropagation becomes a linear in time $O(t)$ and constant in memory
-    $O(1)$ algorithm.
+    This method automatically wraps the passed solver to create an algebraically
+    reversible version of that solver. In doing so, gradient calculation is exact
+    (up to floating point errors) and backpropagation becomes a linear in time $O(t)$
+    and constant in memory $O(1)$ algorithm.
 
     The reversible adjoint can be used when solving ODEs/CDEs/SDEs and is
     compatible with any [`diffrax.AbstractSolver`][]. Adaptive step sizes are also
@@ -1188,15 +1188,7 @@ class _Reversible(
     Reversible solver method.
 
     Allows any solver ([`diffrax.AbstractSolver`][]) to be made algebraically
-    reversible. The convergence order of the reversible solver is inherited from the
-    wrapped solver.
-
-    Gradient calculation through the reversible solver is exact (up to floating
-    point errors) and backpropagation becomes a linear in time $O(t)$ and constant in
-    memory $O(1)$ algorithm.
-
-    This is implemented in [`diffrax.ReversibleAdjoint`][] and passed to
-    [`diffrax.diffeqsolve`][] as `adjoint=diffrax.ReversibleAdjoint()`.
+    reversible. This is a private API, exclusively for [`diffrax.ReversibleAdjoint`][].
     """
 
     solver: AbstractSolver

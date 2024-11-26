@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import optimistix as optx
 import pytest
+from diffrax._adjoint import _Reversible
 from jaxtyping import Array
 
 from .helpers import tree_allclose
@@ -136,7 +137,7 @@ def _loss(y0__args__term, solver, saveat, adjoint, stepsize_controller):
 
 
 def _compare_loss(y0__args__term, base_solver, saveat, stepsize_controller):
-    reversible_solver = diffrax.Reversible(base_solver)
+    reversible_solver = _Reversible(base_solver)
 
     loss, grads_base = _loss(
         y0__args__term,
