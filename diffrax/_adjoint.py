@@ -1031,7 +1031,6 @@ def _loop_reversible_bwd(
         grad_terms,
     )
 
-    jax.debug.print("{}", t1_only)
     state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
     _, _, _, grad_ys, grad_z0, grad_args, grad_terms = state
     if t1_only:
