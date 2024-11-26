@@ -32,52 +32,28 @@ class _PyTreeVectorField(eqx.Module):
         diff_arg, nondiff_arg = args
         dya = diff_arg * y[0] + nondiff_arg * y[1][0]
         dyb = self.nondiff_arg * y[0] + self.diff_arg * y[1][0]
-        dyc = diff_arg * y[1][1] + nondiff_arg * y[1][1]
+        dyc = diff_arg * y[1][1] + nondiff_arg * y[1][0]
         return (dya, (dyb, dyc))
 
 
-def test_constant_stepsizes():
-    y0 = jnp.array([0.9, 5.4])
-    args = (0.1, -1)
-    term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
-    solver = diffrax.Tsit5()
+class QuadraticPath(diffrax.AbstractPath):
+    @property
+    def t0(self):
+        return 0
 
-    # Base
-    sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0=0,
-        t1=5,
-        dt0=0.01,
-        y0=y0,
-        args=args,
-    )
-    y1_base = sol.ys
+    @property
+    def t1(self):
+        return 3
 
-    # Reversible
-    sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0=0,
-        t1=5,
-        dt0=0.01,
-        y0=y0,
-        args=args,
-        adjoint=diffrax.ReversibleAdjoint(),
-    )
-    y1_rev = sol.ys
-
-    assert tree_allclose(y1_base, y1_rev, atol=1e-5)
+    def evaluate(self, t0, t1=None, left=True):
+        del left
+        if t1 is not None:
+            return self.evaluate(t1) - self.evaluate(t0)
+        return t0**2
 
 
-def test_adaptive_stepsizes():
-    y0 = jnp.array([0.9, 5.4])
-    args = (0.1, -1)
-    term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
-    solver = diffrax.Tsit5()
-    stepsize_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
-
-    # Base
+def _compare_solve(y0__args__term, solver, stepsize_controller):
+    y0, args, term = y0__args__term
     sol = diffrax.diffeqsolve(
         term,
         solver,
@@ -105,17 +81,6 @@ def test_adaptive_stepsizes():
     y1_rev = sol.ys
 
     assert tree_allclose(y1_base, y1_rev, atol=1e-5)
-
-
-# The adjoint comparison looks wrong at first glance so here's an explanation:
-# We want to check that the gradients calculated by ReversibleAdjoint
-# are the same as those calculated by RecursiveCheckpointAdjoint, for a fixed
-# solver.
-#
-# The test looks weird because ReversibleAdjoint auto-wraps the solver
-# to create a reversible version. So when calculating gradients we use
-# base_solver + ReversibleAdjoint and reversible_solver + RecursiveCheckpointAdjoint,
-# to ensure that the (reversible) solver is fixed and used across both adjoints.
 
 
 @eqx.filter_value_and_grad
@@ -142,8 +107,17 @@ def _loss(y0__args__term, solver, saveat, adjoint, stepsize_controller, pytree_s
     return jnp.sum(cast(Array, y1))
 
 
+# The adjoint comparison looks wrong at first glance so here's an explanation:
+# We want to check that the gradients calculated by ReversibleAdjoint
+# are the same as those calculated by RecursiveCheckpointAdjoint, for a fixed
+# solver.
+#
+# ReversibleAdjoint auto-wraps the solver to create a reversible version. So when
+# calculating gradients we use base_solver + ReversibleAdjoint and reversible_solver +
+# RecursiveCheckpointAdjoint, to ensure that the reversible solver is fixed across both
+# adjoints.
 def _compare_grads(
-    y0__args__term, base_solver, saveat, stepsize_controller, pytree_state=False
+    y0__args__term, base_solver, saveat, stepsize_controller, pytree_state
 ):
     reversible_solver = _Reversible(base_solver)
 
@@ -167,109 +141,124 @@ def _compare_grads(
     assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
 
 
-def test_reversible_adjoint():
-    y0 = jnp.array([0.9, 5.4])
+@pytest.mark.parametrize(
+    "solver",
+    [diffrax.Tsit5(), diffrax.Kvaerno5(), diffrax.KenCarp5()],
+)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    [diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-8, atol=1e-8)],
+)
+@pytest.mark.parametrize("pytree_state", [True, False])
+def test_forward_solve(solver, stepsize_controller, pytree_state):
+    if pytree_state:
+        y0 = (jnp.array(0.9), (jnp.array(5.4), jnp.array(1.2)))
+        term = diffrax.ODETerm(_PyTreeVectorField(nondiff_arg=1, diff_arg=-0.1))
+    else:
+        y0 = jnp.array([0.9, 5.4])
+        term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
+
+    if isinstance(stepsize_controller, diffrax.ConstantStepSize) and isinstance(
+        solver, diffrax.AbstractImplicitSolver
+    ):
+        return
+
+    if isinstance(solver, diffrax.KenCarp5):
+        term = diffrax.MultiTerm(term, term)
+
     args = (0.1, -1)
-    term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
+    y0__args__term = (y0, args, term)
+    _compare_solve(y0__args__term, solver, stepsize_controller)
+
+
+@pytest.mark.parametrize(
+    "solver",
+    [diffrax.Tsit5(), diffrax.Kvaerno5(), diffrax.KenCarp5()],
+)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    [diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-8, atol=1e-8)],
+)
+@pytest.mark.parametrize(
+    "saveat",
+    [
+        diffrax.SaveAt(t1=True),
+        diffrax.SaveAt(steps=True),
+        diffrax.SaveAt(t0=True, steps=True),
+    ],
+)
+@pytest.mark.parametrize("pytree_state", [True, False])
+def test_reversible_adjoint(solver, stepsize_controller, saveat, pytree_state):
+    if pytree_state:
+        y0 = (jnp.array(0.9), (jnp.array(5.4), jnp.array(1.2)))
+        term = diffrax.ODETerm(_PyTreeVectorField(nondiff_arg=1, diff_arg=-0.1))
+    else:
+        y0 = jnp.array([0.9, 5.4])
+        term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
+
+    if isinstance(stepsize_controller, diffrax.ConstantStepSize) and isinstance(
+        solver, diffrax.AbstractImplicitSolver
+    ):
+        return
+
+    if isinstance(solver, diffrax.KenCarp5):
+        term = diffrax.MultiTerm(term, term)
+
+    args = (0.1, -1)
     y0__args__term = (y0, args, term)
     del y0, args, term
 
-    base_solver = diffrax.Tsit5()
-    constant_steps = diffrax.ConstantStepSize()
-    adaptive_steps = diffrax.PIDController(rtol=1e-8, atol=1e-8)
-
-    # Save y1 only
-    saveat = diffrax.SaveAt(t1=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps)
-
-    # Save steps
-    saveat = diffrax.SaveAt(steps=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps)
-
-    # Save steps (including t0)
-    saveat = diffrax.SaveAt(t0=True, steps=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps)
+    _compare_grads(y0__args__term, solver, saveat, stepsize_controller, pytree_state)
 
 
-def test_reversible_adjoint_pytree():
-    y0 = (jnp.array(0.9), (jnp.array(5.4), jnp.array(1.2)))
-    args = (0.1, -1)
-    term = diffrax.ODETerm(_PyTreeVectorField(nondiff_arg=1, diff_arg=-0.1))
-    y0__args__term = (y0, args, term)
-
-    base_solver = diffrax.Tsit5()
-    constant_steps = diffrax.ConstantStepSize()
-    adaptive_steps = diffrax.PIDController(rtol=1e-8, atol=1e-8)
-
-    # Save y1 only
-    saveat = diffrax.SaveAt(t1=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps, True)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps, True)
-
-    # Save steps
-    saveat = diffrax.SaveAt(steps=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps, True)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps, True)
-
-    # Save steps (including t0)
-    saveat = diffrax.SaveAt(t0=True, steps=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps, True)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps, True)
-
-
-def test_implicit_solvers():
-    y0 = jnp.array([0.9, 5.4])
-    args = (0.1, -1)
-    term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
-    y0__args__term = (y0, args, term)
-    del y0, args, term
-
-    base_solver = diffrax.Kvaerno5()
-    adaptive_steps = diffrax.PIDController(rtol=1e-8, atol=1e-8)
-
-    saveat = diffrax.SaveAt(t1=True)
-    _compare_grads(y0__args__term, base_solver, saveat, adaptive_steps)
-
-
-def test_sde_additive_noise():
+@pytest.mark.parametrize(
+    "solver, diffusion",
+    [
+        (diffrax.ShARK(), lambda t, y, args: 1.0),
+        (diffrax.SlowRK(), lambda t, y, args: 0.1 * y),
+    ],
+)
+@pytest.mark.parametrize("adjoint", [False, True])
+def test_sde(solver, diffusion, adjoint):
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
     drift = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
-    diffusion = lambda t, y, args: 1.0
     brownian_motion = diffrax.VirtualBrownianTree(
         0, 5, tol=1e-3, shape=(), levy_area=diffrax.SpaceTimeLevyArea, key=jr.PRNGKey(0)
     )
     terms = diffrax.MultiTerm(drift, diffrax.ControlTerm(diffusion, brownian_motion))
     y0__args__term = (y0, args, terms)
-    del y0, args, terms
+    stepsize_controller = diffrax.ConstantStepSize()
 
-    base_solver = diffrax.ShARK()
-    constant_steps = diffrax.ConstantStepSize()
+    if adjoint:
+        saveat = diffrax.SaveAt(t1=True)
+        _compare_grads(y0__args__term, solver, saveat, stepsize_controller, False)
 
-    saveat = diffrax.SaveAt(t1=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps)
+    else:
+        _compare_solve(y0__args__term, solver, stepsize_controller)
 
 
-def test_sde_commutative_noise():
+@pytest.mark.parametrize(
+    "solver",
+    [diffrax.Tsit5(), diffrax.Kvaerno5(), diffrax.KenCarp5()],
+)
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    [diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-8, atol=1e-8)],
+)
+def test_cde(solver, stepsize_controller):
+    if isinstance(stepsize_controller, diffrax.ConstantStepSize) and isinstance(
+        solver, diffrax.AbstractImplicitSolver
+    ):
+        return
+
+    vf = _VectorField(nondiff_arg=1, diff_arg=-0.1)
+    control = diffrax.ControlTerm(vf, QuadraticPath())
+    terms = diffrax.MultiTerm(control, diffrax.ODETerm(vf))
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
-    drift = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
-    diffusion = lambda t, y, args: 0.5 * y
-    brownian_motion = diffrax.VirtualBrownianTree(
-        0, 5, tol=1e-3, shape=(), levy_area=diffrax.SpaceTimeLevyArea, key=jr.PRNGKey(0)
-    )
-    terms = diffrax.MultiTerm(drift, diffrax.ControlTerm(diffusion, brownian_motion))
     y0__args__term = (y0, args, terms)
-    del y0, args, terms
-
-    base_solver = diffrax.SlowRK()
-    constant_steps = diffrax.ConstantStepSize()
-
-    saveat = diffrax.SaveAt(t1=True)
-    _compare_grads(y0__args__term, base_solver, saveat, constant_steps)
+    _compare_solve(y0__args__term, solver, stepsize_controller)
 
 
 def test_events():
@@ -299,102 +288,38 @@ def test_events():
 
     msg = "`diffrax.ReversibleAdjoint` is not compatible with events."
     with pytest.raises(NotImplementedError, match=msg):
-        v, grad_v = _event_loss(y0, adjoint=diffrax.ReversibleAdjoint())
+        _event_loss(y0, adjoint=diffrax.ReversibleAdjoint())
 
 
-def test_incorrect_saveat():
+@pytest.mark.parametrize(
+    "saveat",
+    [
+        diffrax.SaveAt(ts=jnp.linspace(0, 5)),
+        diffrax.SaveAt(dense=True),
+        diffrax.SaveAt(t0=True),
+        diffrax.SaveAt(ts=jnp.linspace(0, 5), fn=lambda t, y, args: t),
+    ],
+)
+@pytest.mark.parametrize(
+    "solver",
+    [diffrax.SemiImplicitEuler(), diffrax.ReversibleHeun(), diffrax.LeapfrogMidpoint()],
+)
+def test_incompatible_arguments(solver, saveat):
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
     term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
     y0__args__term = (y0, args, term)
-    del y0, args, term
 
-    base_solver = diffrax.Tsit5()
-
-    # Save ts
-    ts = jnp.linspace(0, 5)
-    saveat_ts = diffrax.SaveAt(ts=ts)
-    saveat_dense = diffrax.SaveAt(dense=True)
-    saveat_t0 = diffrax.SaveAt(t0=True)
-    saveat_fn = diffrax.SaveAt(ts=ts, fn=lambda t, y, args: t)
+    if isinstance(solver, diffrax.SemiImplicitEuler):
+        y0 = (y0, y0)
+        term = (term, term)
 
     with pytest.raises(ValueError):
         loss, grads_reversible = _loss(
             y0__args__term,
-            base_solver,
-            saveat_ts,
+            solver,
+            saveat,
             adjoint=diffrax.ReversibleAdjoint(),
             stepsize_controller=diffrax.ConstantStepSize(),
             pytree_state=False,
-        )
-    with pytest.raises(ValueError):
-        loss, grads_reversible = _loss(
-            y0__args__term,
-            base_solver,
-            saveat_dense,
-            adjoint=diffrax.ReversibleAdjoint(),
-            stepsize_controller=diffrax.ConstantStepSize(),
-            pytree_state=False,
-        )
-    with pytest.raises(ValueError):
-        loss, grads_reversible = _loss(
-            y0__args__term,
-            base_solver,
-            saveat_t0,
-            adjoint=diffrax.ReversibleAdjoint(),
-            stepsize_controller=diffrax.ConstantStepSize(),
-            pytree_state=False,
-        )
-    with pytest.raises(ValueError):
-        loss, grads_reversible = _loss(
-            y0__args__term,
-            base_solver,
-            saveat_fn,
-            adjoint=diffrax.ReversibleAdjoint(),
-            stepsize_controller=diffrax.ConstantStepSize(),
-            pytree_state=False,
-        )
-
-
-def test_incorrect_solver():
-    y0 = (jnp.array([0.9, 5.4]), jnp.array([0.9, 5.4]))
-    args = (0.1, -1)
-    terms = (
-        diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
-        diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
-    )
-    with pytest.raises(ValueError):
-        diffrax.diffeqsolve(
-            terms,
-            diffrax.SemiImplicitEuler(),
-            t0=0,
-            t1=5,
-            dt0=0.01,
-            y0=y0,
-            args=args,
-            adjoint=diffrax.ReversibleAdjoint(),
-        )
-
-    with pytest.raises(ValueError):
-        diffrax.diffeqsolve(
-            terms[0],
-            diffrax.ReversibleHeun(),
-            t0=0,
-            t1=5,
-            dt0=0.01,
-            y0=y0[0],
-            args=args,
-            adjoint=diffrax.ReversibleAdjoint(),
-        )
-
-    with pytest.raises(ValueError):
-        diffrax.diffeqsolve(
-            terms[0],
-            diffrax.LeapfrogMidpoint(),
-            t0=0,
-            t1=5,
-            dt0=0.01,
-            y0=y0[0],
-            args=args,
-            adjoint=diffrax.ReversibleAdjoint(),
         )
