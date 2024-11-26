@@ -4,6 +4,8 @@ import diffrax
 import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
+import optimistix as optx
+import pytest
 from jaxtyping import Array
 
 from .helpers import tree_allclose
@@ -49,6 +51,37 @@ def _loss(y0__args__term, solver, saveat, adjoint, stepsize_controller):
         y1 = ys[:final_index]  # type: ignore
 
     return jnp.sum(cast(Array, y1))
+
+
+# The adjoint comparison looks wrong at first glance so here's an explanation:
+# We want to check that the gradients calculated by ReversibleAdjoint
+# are the same as those calculated by RecursiveCheckpointAdjoint, for a fixed
+# solver.
+#
+# The test looks weird because ReversibleAdjoint auto-wraps the solver
+# to create a reversible version. So when calculating gradients we use
+# base_solver + ReversibleAdjoint and reversible_solver + RecursiveCheckpointAdjoint,
+# to ensure that the (reversible) solver is fixed and used across both adjoints.
+
+
+def _compare_loss(y0__args__term, base_solver, saveat, stepsize_controller):
+    reversible_solver = diffrax.Reversible(base_solver)
+
+    loss, grads_base = _loss(
+        y0__args__term,
+        reversible_solver,
+        saveat,
+        adjoint=diffrax.RecursiveCheckpointAdjoint(),
+        stepsize_controller=stepsize_controller,
+    )
+    loss, grads_reversible = _loss(
+        y0__args__term,
+        base_solver,
+        saveat,
+        adjoint=diffrax.ReversibleAdjoint(),
+        stepsize_controller=stepsize_controller,
+    )
+    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
 
 
 def test_constant_stepsizes():
@@ -122,13 +155,6 @@ def test_adaptive_stepsizes():
     assert tree_allclose(y1_base, y1_rev, atol=1e-5)
 
 
-# The adjoint tests look wrong at first glance so here's an explanation:
-# We want to check that the gradients calculated by ReversibleAdjoint
-# are the same as those calculated by RecursiveCheckpointAdjoint.
-#
-# The test looks weird because ReversibleAdjoint auto-wraps the solver
-# to create a reversible version. So we use base_solver + ReversibleAdjoint and
-# reversible_solver + RecursiveCheckpointAdjoint.
 def test_reversible_adjoint():
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
@@ -137,122 +163,23 @@ def test_reversible_adjoint():
     del y0, args, term
 
     base_solver = diffrax.Tsit5()
-    reversible_solver = diffrax.Reversible(base_solver)
+    constant_steps = diffrax.ConstantStepSize()
+    adaptive_steps = diffrax.PIDController(rtol=1e-8, atol=1e-8)
 
     # Save y1 only
     saveat = diffrax.SaveAt(t1=True)
-
-    # Constant steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
-
-    # Adaptive steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+    _compare_loss(y0__args__term, base_solver, saveat, constant_steps)
+    _compare_loss(y0__args__term, base_solver, saveat, adaptive_steps)
 
     # Save steps
     saveat = diffrax.SaveAt(steps=True)
-
-    # Constant steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
-
-    # Adaptive steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+    _compare_loss(y0__args__term, base_solver, saveat, constant_steps)
+    _compare_loss(y0__args__term, base_solver, saveat, adaptive_steps)
 
     # Save steps (including t0)
     saveat = diffrax.SaveAt(t0=True, steps=True)
-
-    # Constant steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
-
-    # Adaptive steps
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+    _compare_loss(y0__args__term, base_solver, saveat, constant_steps)
+    _compare_loss(y0__args__term, base_solver, saveat, adaptive_steps)
 
 
 def test_implicit_solvers():
@@ -263,27 +190,10 @@ def test_implicit_solvers():
     del y0, args, term
 
     base_solver = diffrax.Kvaerno5()
-    reversible_solver = diffrax.Reversible(base_solver)
+    adaptive_steps = diffrax.PIDController(rtol=1e-8, atol=1e-8)
 
-    # Save y1 only
     saveat = diffrax.SaveAt(t1=True)
-
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.PIDController(rtol=1e-8, atol=1e-8),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+    _compare_loss(y0__args__term, base_solver, saveat, adaptive_steps)
 
 
 def test_sde_additive_noise():
@@ -299,27 +209,10 @@ def test_sde_additive_noise():
     del y0, args, terms
 
     base_solver = diffrax.ShARK()
-    reversible_solver = diffrax.Reversible(base_solver)
+    constant_steps = diffrax.ConstantStepSize()
 
-    # Save y1 only
     saveat = diffrax.SaveAt(t1=True)
-
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+    _compare_loss(y0__args__term, base_solver, saveat, constant_steps)
 
 
 def test_sde_commutative_noise():
@@ -335,24 +228,87 @@ def test_sde_commutative_noise():
     del y0, args, terms
 
     base_solver = diffrax.SlowRK()
-    reversible_solver = diffrax.Reversible(base_solver)
+    constant_steps = diffrax.ConstantStepSize()
 
-    # Save y1 only
     saveat = diffrax.SaveAt(t1=True)
+    _compare_loss(y0__args__term, base_solver, saveat, constant_steps)
 
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=diffrax.ConstantStepSize(),
-    )
 
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
+def test_events():
+    def vector_field(t, y, args):
+        _, v = y
+        return jnp.array([v, -8.0])
+
+    def cond_fn(t, y, args, **kwargs):
+        x, _ = y
+        return x
+
+    @eqx.filter_value_and_grad
+    def _event_loss(y0, adjoint):
+        sol = diffrax.diffeqsolve(
+            term, solver, t0, t1, dt0, y0, adjoint=adjoint, event=event
+        )
+        return cast(Array, sol.ys)[0, 1]
+
+    y0 = jnp.array([10.0, 0.0])
+    t0 = 0
+    t1 = jnp.inf
+    dt0 = 0.1
+    term = diffrax.ODETerm(vector_field)
+    root_finder = optx.Newton(1e-5, 1e-5, optx.rms_norm)
+    event = diffrax.Event(cond_fn, root_finder)
+    solver = diffrax.Tsit5()
+
+    msg = "`diffrax.ReversibleAdjoint` is not compatible with events."
+    with pytest.raises(NotImplementedError, match=msg):
+        v, grad_v = _event_loss(y0, adjoint=diffrax.ReversibleAdjoint())
+
+
+def test_incorrect_saveat():
+    y0 = jnp.array([0.9, 5.4])
+    args = (0.1, -1)
+    term = diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1))
+    y0__args__term = (y0, args, term)
+    del y0, args, term
+
+    base_solver = diffrax.Tsit5()
+
+    # Save ts
+    ts = jnp.linspace(0, 5)
+    saveat_ts = diffrax.SaveAt(ts=ts)
+    saveat_dense = diffrax.SaveAt(dense=True)
+    saveat_t0 = diffrax.SaveAt(t0=True)
+    saveat_fn = diffrax.SaveAt(ts=ts, fn=lambda t, y, args: t)
+
+    with pytest.raises(ValueError):
+        loss, grads_reversible = _loss(
+            y0__args__term,
+            base_solver,
+            saveat_ts,
+            adjoint=diffrax.ReversibleAdjoint(),
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+    with pytest.raises(ValueError):
+        loss, grads_reversible = _loss(
+            y0__args__term,
+            base_solver,
+            saveat_dense,
+            adjoint=diffrax.ReversibleAdjoint(),
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+    with pytest.raises(ValueError):
+        loss, grads_reversible = _loss(
+            y0__args__term,
+            base_solver,
+            saveat_t0,
+            adjoint=diffrax.ReversibleAdjoint(),
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+    with pytest.raises(ValueError):
+        loss, grads_reversible = _loss(
+            y0__args__term,
+            base_solver,
+            saveat_fn,
+            adjoint=diffrax.ReversibleAdjoint(),
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )

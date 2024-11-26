@@ -1031,6 +1031,7 @@ def _loop_reversible_bwd(
         grad_terms,
     )
 
+    jax.debug.print("{}", t1_only)
     state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
     _, _, _, grad_ys, grad_z0, grad_args, grad_terms = state
     if t1_only:
@@ -1112,8 +1113,13 @@ class ReversibleAdjoint(AbstractAdjoint):
             and eqx.tree_equal(saveat, SaveAt(t0=True, steps=True)) is not True
         ):
             raise ValueError(
-                "Can only use `adjoint=ReversibleAdjoint()` with "
+                "Can only use `diffrax.ReversibleAdjoint` with "
                 "`saveat=SaveAt(t1=True)` or `saveat=SaveAt(steps=True)`."
+            )
+
+        if event is not None:
+            raise NotImplementedError(
+                "`diffrax.ReversibleAdjoint` is not compatible with events."
             )
 
         solver = Reversible(solver, self.l)
