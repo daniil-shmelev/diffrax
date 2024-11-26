@@ -26,6 +26,7 @@ from ._solver import (
     AbstractSolver,
     AbstractStratonovichSolver,
     AbstractWrappedSolver,
+    LeapfrogMidpoint,
 )
 from ._term import AbstractTerm, AdjointTerm
 
@@ -1124,6 +1125,12 @@ class ReversibleAdjoint(AbstractAdjoint):
         if event is not None:
             raise NotImplementedError(
                 "`diffrax.ReversibleAdjoint` is not compatible with events."
+            )
+
+        if isinstance(solver, LeapfrogMidpoint):
+            raise ValueError(
+                "`diffrax.ReversibleAdjoint` is not compatible with "
+                "`diffrax.LeapFrogMidpoint`."
             )
 
         solver = _Reversible(solver, self.l)
