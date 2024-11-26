@@ -926,8 +926,8 @@ def _loop_reversible_bwd(
     # If true we must be using SaveAt(t1=True).
     t1_only = saveat.subs.t1
     if t1_only:
-        y1 = ys[-1]
-        grad_ys = grad_final_state.save_state.ys[-1]
+        y1 = (ω(ys)[-1]).ω
+        grad_ys = (ω(grad_final_state.save_state.ys)[-1]).ω
         grad_ys = jtu.tree_map(_materialise_none, y1, grad_ys)
         grad_y0_zeros = jtu.tree_map(jnp.zeros_like, grad_ys)
 
@@ -935,10 +935,10 @@ def _loop_reversible_bwd(
     # ReversibleAdjoint. If y0 is not saved (t0=False) then we prepend grad_y0 (zeros).
     else:
         if saveat.subs.t0:
-            y1 = ys[ts_final_index]
+            y1 = (ω(ys)[ts_final_index]).ω
             grad_ys = grad_final_state.save_state.ys
         else:
-            y1 = ys[ts_final_index - 1]
+            y1 = (ω(ys)[ts_final_index - 1]).ω
             grad_ys = grad_final_state.save_state.ys
             grad_y0 = jtu.tree_map(lambda x: jnp.zeros_like(x[0]), grad_ys)
             grad_ys = jtu.tree_map(
@@ -978,8 +978,8 @@ def _loop_reversible_bwd(
             grad_y0 = grad_y0_zeros  # pyright: ignore
 
         else:
-            grad_y1 = grad_ys[ts_index]
-            grad_y0 = grad_ys[ts_index - 1]
+            grad_y1 = (ω(grad_ys)[ts_index]).ω
+            grad_y0 = (ω(grad_ys)[ts_index - 1]).ω
 
         solver_step_fn = ft.partial(solver_step, t1, t0, original_solver_state)
         step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
@@ -1007,8 +1007,8 @@ def _loop_reversible_bwd(
         if t1_only:
             grad_ys = grad_y0
         else:
-            grad_ys = grad_ys.at[ts_index].set(grad_y1)
-            grad_ys = grad_ys.at[ts_index - 1].set(grad_y0)
+            grad_ys = (ω(grad_ys).at[ts_index].set(ω(grad_y1))).ω
+            grad_ys = (ω(grad_ys).at[ts_index - 1].set(ω(grad_y0))).ω
 
         ts_index = ts_index - 1
 
@@ -1041,7 +1041,7 @@ def _loop_reversible_bwd(
     if t1_only:
         grad_y0 = grad_ys
     else:
-        grad_y0 = grad_ys[0]
+        grad_y0 = (ω(grad_ys)[0]).ω
 
     return (ω(grad_y0) + ω(grad_z0)).ω, grad_args, grad_terms
 
