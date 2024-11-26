@@ -1053,8 +1053,8 @@ class ReversibleAdjoint(AbstractAdjoint):
 
     This method automatically wraps the passed solver to create an algebraically
     reversible version of that solver. In doing so, gradient calculation is exact
-    (up to floating point errors) and backpropagation becomes a linear in time $O(t)$
-    and constant in memory $O(1)$ algorithm.
+    (up to floating point errors) and backpropagation becomes a linear in time $O(n)$
+    and constant in memory $O(1)$ algorithm in the number of steps $n$.
 
     The reversible adjoint can be used when solving ODEs/CDEs/SDEs and is
     compatible with any [`diffrax.AbstractSolver`][]. Adaptive step sizes are also
