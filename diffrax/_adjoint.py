@@ -1178,7 +1178,7 @@ def _add_maybe_none(x, y):
     if x is None:
         return None
     else:
-        return x + y
+        return (ω(x) + ω(y)).ω
 
 
 class _Reversible(
