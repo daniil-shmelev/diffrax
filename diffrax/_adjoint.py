@@ -1083,16 +1083,27 @@ class ReversibleAdjoint(AbstractAdjoint):
         }
         ```
 
-        And built on previous work introduced in:
+        And built on previous work by:
 
         ```bibtex
         @article{kidger2021efficient,
             title={Efficient and accurate gradients for neural sdes},
             author={Kidger, Patrick and Foster, James and Li, Xuechen Chen and Lyons,
-            Terry},
+                    Terry},
             journal={Advances in Neural Information Processing Systems},
             volume={34},
             pages={18747--18761},
+            year={2021}
+        }
+        ```
+
+        ```bibtex
+        @article{zhuang2021mali,
+            title={Mali: A memory efficient and reverse accurate integrator for neural
+                    odes},
+            author={Zhuang, Juntang and Dvornek, Nicha C and Tatikonda, Sekhar and
+            Duncan, James S},
+            journal={arXiv preprint arXiv:2102.04668},
             year={2021}
         }
         ```
