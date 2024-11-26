@@ -26,6 +26,9 @@ from ._solver import (
     AbstractSolver,
     AbstractStratonovichSolver,
     AbstractWrappedSolver,
+    LeapfrogMidpoint,
+    ReversibleHeun,
+    SemiImplicitEuler,
 )
 from ._term import AbstractTerm, AdjointTerm
 
@@ -1124,6 +1127,12 @@ class ReversibleAdjoint(AbstractAdjoint):
         if event is not None:
             raise NotImplementedError(
                 "`diffrax.ReversibleAdjoint` is not compatible with events."
+            )
+
+        if isinstance(solver, (SemiImplicitEuler, ReversibleHeun, LeapfrogMidpoint)):
+            raise ValueError(
+                "`diffrax.ReversibleAdjoint` is not compatible with solvers that are "
+                f"intrinsically algebraically reversible, such as {solver}."
             )
 
         solver = _Reversible(solver, self.l)

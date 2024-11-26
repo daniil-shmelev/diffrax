@@ -354,3 +354,29 @@ def test_incorrect_saveat():
             stepsize_controller=diffrax.ConstantStepSize(),
             pytree_state=False,
         )
+
+
+def test_incorrect_solver():
+    y0 = (jnp.array([0.9, 5.4]), jnp.array([0.9, 5.4]))
+    args = (0.1, -1)
+    terms = (
+        diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
+        diffrax.ODETerm(_VectorField(nondiff_arg=1, diff_arg=-0.1)),
+    )
+    incompatible_solvers = (
+        diffrax.SemiImplicitEuler(),
+        diffrax.ReversibleHeun(),
+        diffrax.LeapfrogMidpoint(),
+    )
+    for solver in incompatible_solvers:
+        with pytest.raises(ValueError):
+            diffrax.diffeqsolve(
+                terms,
+                solver,
+                t0=0,
+                t1=5,
+                dt0=0.01,
+                y0=y0,
+                args=args,
+                adjoint=diffrax.ReversibleAdjoint(),
+            )
