@@ -23,67 +23,6 @@ class _VectorField(eqx.Module):
         return jnp.stack([dya, dyb])
 
 
-@eqx.filter_value_and_grad
-def _loss(y0__args__term, solver, saveat, adjoint, stepsize_controller):
-    y0, args, term = y0__args__term
-
-    sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0=0,
-        t1=5,
-        dt0=0.01,
-        y0=y0,
-        args=args,
-        saveat=saveat,
-        adjoint=adjoint,
-        stepsize_controller=stepsize_controller,
-    )
-    if eqx.tree_equal(saveat, diffrax.SaveAt(t1=True)) is True:
-        y1 = sol.ys
-    else:
-        if eqx.tree_equal(saveat, diffrax.SaveAt(t0=True, steps=True)) is True:
-            final_index = sol.stats["num_accepted_steps"] + 1
-        elif eqx.tree_equal(saveat, diffrax.SaveAt(steps=True)) is True:
-            final_index = sol.stats["num_accepted_steps"]
-
-        ys = cast(Array, sol.ys)
-        y1 = ys[:final_index]  # type: ignore
-
-    return jnp.sum(cast(Array, y1))
-
-
-# The adjoint comparison looks wrong at first glance so here's an explanation:
-# We want to check that the gradients calculated by ReversibleAdjoint
-# are the same as those calculated by RecursiveCheckpointAdjoint, for a fixed
-# solver.
-#
-# The test looks weird because ReversibleAdjoint auto-wraps the solver
-# to create a reversible version. So when calculating gradients we use
-# base_solver + ReversibleAdjoint and reversible_solver + RecursiveCheckpointAdjoint,
-# to ensure that the (reversible) solver is fixed and used across both adjoints.
-
-
-def _compare_loss(y0__args__term, base_solver, saveat, stepsize_controller):
-    reversible_solver = diffrax.Reversible(base_solver)
-
-    loss, grads_base = _loss(
-        y0__args__term,
-        reversible_solver,
-        saveat,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
-        stepsize_controller=stepsize_controller,
-    )
-    loss, grads_reversible = _loss(
-        y0__args__term,
-        base_solver,
-        saveat,
-        adjoint=diffrax.ReversibleAdjoint(),
-        stepsize_controller=stepsize_controller,
-    )
-    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
-
-
 def test_constant_stepsizes():
     y0 = jnp.array([0.9, 5.4])
     args = (0.1, -1)
@@ -153,6 +92,67 @@ def test_adaptive_stepsizes():
     y1_rev = sol.ys
 
     assert tree_allclose(y1_base, y1_rev, atol=1e-5)
+
+
+# The adjoint comparison looks wrong at first glance so here's an explanation:
+# We want to check that the gradients calculated by ReversibleAdjoint
+# are the same as those calculated by RecursiveCheckpointAdjoint, for a fixed
+# solver.
+#
+# The test looks weird because ReversibleAdjoint auto-wraps the solver
+# to create a reversible version. So when calculating gradients we use
+# base_solver + ReversibleAdjoint and reversible_solver + RecursiveCheckpointAdjoint,
+# to ensure that the (reversible) solver is fixed and used across both adjoints.
+
+
+@eqx.filter_value_and_grad
+def _loss(y0__args__term, solver, saveat, adjoint, stepsize_controller):
+    y0, args, term = y0__args__term
+
+    sol = diffrax.diffeqsolve(
+        term,
+        solver,
+        t0=0,
+        t1=5,
+        dt0=0.01,
+        y0=y0,
+        args=args,
+        saveat=saveat,
+        adjoint=adjoint,
+        stepsize_controller=stepsize_controller,
+    )
+    if eqx.tree_equal(saveat, diffrax.SaveAt(t1=True)) is True:
+        y1 = sol.ys
+    else:
+        if eqx.tree_equal(saveat, diffrax.SaveAt(t0=True, steps=True)) is True:
+            final_index = sol.stats["num_accepted_steps"] + 1
+        elif eqx.tree_equal(saveat, diffrax.SaveAt(steps=True)) is True:
+            final_index = sol.stats["num_accepted_steps"]
+
+        ys = cast(Array, sol.ys)
+        y1 = ys[:final_index]  # type: ignore
+
+    return jnp.sum(cast(Array, y1))
+
+
+def _compare_loss(y0__args__term, base_solver, saveat, stepsize_controller):
+    reversible_solver = diffrax.Reversible(base_solver)
+
+    loss, grads_base = _loss(
+        y0__args__term,
+        reversible_solver,
+        saveat,
+        adjoint=diffrax.RecursiveCheckpointAdjoint(),
+        stepsize_controller=stepsize_controller,
+    )
+    loss, grads_reversible = _loss(
+        y0__args__term,
+        base_solver,
+        saveat,
+        adjoint=diffrax.ReversibleAdjoint(),
+        stepsize_controller=stepsize_controller,
+    )
+    assert tree_allclose(grads_base, grads_reversible, atol=1e-5)
 
 
 def test_reversible_adjoint():
