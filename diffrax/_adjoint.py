@@ -909,18 +909,14 @@ def _loop_reversible_bwd(
     *,
     self,
     saveat,
+    init_state,
     solver,
     event,
-    t0,
-    t1,
-    dt0,
-    init_state,
-    progress_meter,
     **kwargs,
 ):
     assert event is None
 
-    del perturbed, init_state, t1, progress_meter, self, kwargs
+    del perturbed, self, init_state, kwargs
     ts, ts_final_index, ys, solver_state1 = residuals
     original_solver_state, z1 = solver_state1
     del residuals, solver_state1
