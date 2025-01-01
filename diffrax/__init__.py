@@ -100,6 +100,7 @@ from ._solver import (
     Kvaerno5 as Kvaerno5,
     LeapfrogMidpoint as LeapfrogMidpoint,
     Midpoint as Midpoint,
+    MidpointSimple as MidpointSimple,
     MultiButcherTableau as MultiButcherTableau,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
