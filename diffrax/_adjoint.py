@@ -963,7 +963,7 @@ def _loop_reversible_bwd(
     def grad_step(state):
         def solver_step(t0, t1, original_solver_state, y0, args, terms):
             step, _, _, original_solver_state, _ = solver.solver.step(
-                terms, t0, t1, y0, args, original_solver_state, False
+                terms, t0, t1, y0, args, original_solver_state, True
             )
             return step, original_solver_state
 
@@ -1252,9 +1252,9 @@ class _Reversible(
         y0: Y,
         args: Args,
     ) -> _SolverState:
-        if isinstance(self.solver, AbstractRungeKutta):
-            object.__setattr__(self.solver.tableau, "fsal", False)
-            object.__setattr__(self.solver.tableau, "ssal", False)
+        # if isinstance(self.solver, AbstractRungeKutta):
+        #     object.__setattr__(self.solver.tableau, "fsal", False)
+        #     object.__setattr__(self.solver.tableau, "ssal", False)
         original_solver_init = self.solver.init(terms, t0, t1, y0, args)
         return (original_solver_init, y0)
 
@@ -1271,12 +1271,12 @@ class _Reversible(
         original_solver_state, z0 = solver_state
 
         step_z0, z_error, dense_info, original_solver_state, result1 = self.solver.step(
-            terms, t0, t1, z0, args, original_solver_state, made_jump
+            terms, t0, t1, z0, args, original_solver_state, True
         )
         y1 = (self.l * (ω(y0) - ω(z0)) + ω(step_z0)).ω
 
         step_y1, y_error, _, _, result2 = self.solver.step(
-            terms, t1, t0, y1, args, original_solver_state, made_jump
+            terms, t1, t0, y1, args, original_solver_state, True
         )
         z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
 
