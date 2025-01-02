@@ -1252,9 +1252,6 @@ class _Reversible(
         y0: Y,
         args: Args,
     ) -> _SolverState:
-        # if isinstance(self.solver, AbstractRungeKutta):
-        #     object.__setattr__(self.solver.tableau, "fsal", False)
-        #     object.__setattr__(self.solver.tableau, "ssal", False)
         original_solver_init = self.solver.init(terms, t0, t1, y0, args)
         return (original_solver_init, y0)
 
