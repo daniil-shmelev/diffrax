@@ -20,7 +20,9 @@ import jax.lax as lax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import lineax.internal as lxi
+import numpy as np
 import optimistix as optx
+import wadler_lindig as wl
 from jaxtyping import Array, ArrayLike, Float, Inexact, PyTree, Real
 
 from ._adjoint import AbstractAdjoint, RecursiveCheckpointAdjoint, ReversibleAdjoint
@@ -188,7 +190,11 @@ def _assert_term_compatible(
                     better_isinstance, control_type, control_type_expected
                 )
                 if not control_type_compatible:
-                    raise ValueError(f"Control term {term} is incompatible.")
+                    raise ValueError(
+                        "Control term is incompatible: the returned control (e.g. "
+                        f"Brownian motion for an SDE) was {control_type}, but this "
+                        f"solver expected {control_type_expected}."
+                    )
             else:
                 assert False, "Malformed term structure"
             # If we've got to this point then the term is compatible
@@ -198,7 +204,13 @@ def _assert_term_compatible(
             jtu.tree_map(_check, term_structure, terms, contr_kwargs, y)
     except Exception as e:
         # ValueError may also arise from mismatched tree structures
-        raise ValueError("Terms are not compatible with solver!") from e
+        pretty_term = wl.pformat(terms)
+        pretty_expected = wl.pformat(term_structure)
+        raise ValueError(
+            f"Terms are not compatible with solver! Got:\n{pretty_term}\nbut expected:"
+            f"\n{pretty_expected}\nNote that terms are checked recursively: if you "
+            "scroll up you may find a root-cause error that is more specific."
+        ) from e
 
 
 def _is_subsaveat(x: Any) -> bool:
@@ -263,12 +275,10 @@ def _maybe_static(static_x: Optional[ArrayLike], x: ArrayLike) -> ArrayLike:
     # Some values (made_jump and result) are not used in many common use-cases. If we
     # detect that they're unused then we make sure they're non-Array Python values, so
     # that we can special case on them at trace time and get a performance boost.
-    if isinstance(static_x, (bool, int, float, complex)):
+    if isinstance(static_x, (bool, int, float, complex, np.ndarray)):
         return static_x
     elif static_x is None:
         return x
-    elif type(jax.core.get_aval(static_x)) is jax.core.ConcreteArray:
-        return static_x
     else:
         return x
 
@@ -797,9 +807,60 @@ def loop(
                 save_state = _save(tfinal, yfinal, args, subsaveat.fn, save_state)
         return save_state
 
+    def _save_if_t0_equals_t1(subsaveat: SubSaveAt, save_state: SaveState) -> SaveState:
+        if subsaveat.ts is not None:
+            out_size = 1 if subsaveat.t0 else 0
+            out_size += 1 if subsaveat.t1 and not subsaveat.steps else 0
+            out_size += len(subsaveat.ts)
+
+            def _make_ys(out, old_outs):
+                outs = jnp.stack([out] * out_size)
+                if subsaveat.steps:
+                    outs = jnp.concatenate(
+                        [
+                            outs,
+                            jnp.full(
+                                (max_steps,) + out.shape, jnp.inf, dtype=out.dtype
+                            ),
+                        ]
+                    )
+                assert outs.shape == old_outs.shape
+                return outs
+
+            ts = jnp.full(out_size, t0)
+            if subsaveat.steps:
+                ts = jnp.concatenate((ts, jnp.full(max_steps, jnp.inf, dtype=ts.dtype)))
+            assert ts.shape == save_state.ts.shape
+            ys = jtu.tree_map(_make_ys, subsaveat.fn(t0, yfinal, args), save_state.ys)
+            save_state = SaveState(
+                saveat_ts_index=out_size,
+                ts=ts,
+                ys=ys,
+                save_index=out_size,
+            )
+        return save_state
+
     save_state = jtu.tree_map(
         _save_t1, saveat.subs, final_state.save_state, is_leaf=_is_subsaveat
     )
+
+    # if t0 == t1 then we don't enter the integration loop. In this case we have to
+    # manually update the saved ts and ys if we want to save at "intermediate"
+    # times specified by saveat.subs.ts
+    save_state = jax.lax.cond(
+        eqxi.unvmap_any(t0 == t1),
+        lambda __save_state: jax.lax.cond(
+            t0 == t1,
+            lambda _save_state: jtu.tree_map(
+                _save_if_t0_equals_t1, saveat.subs, _save_state, is_leaf=_is_subsaveat
+            ),
+            lambda _save_state: _save_state,
+            __save_state,
+        ),
+        lambda __save_state: __save_state,
+        save_state,
+    )
+
     final_state = eqx.tree_at(
         lambda s: s.save_state, final_state, save_state, is_leaf=_is_none
     )
