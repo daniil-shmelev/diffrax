@@ -104,6 +104,8 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     Ralston as Ralston,
     ReversibleHeun as ReversibleHeun,
+    RK3Simple as RK3Simple,
+    RK4Simple as RK4Simple,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
     ShARK as ShARK,

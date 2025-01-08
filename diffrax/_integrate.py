@@ -222,7 +222,7 @@ def _outer_buffers(state):
     return (
         [s.ts for s in save_states]
         + [s.ys for s in save_states]
-        + [state.dense_ts, state.dense_infos]
+        + [state.dense_ts, state.dense_infos, state.reversible_ts]
     )
 
 

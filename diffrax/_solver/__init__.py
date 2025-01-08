@@ -22,7 +22,6 @@ from .kvaerno4 import Kvaerno4 as Kvaerno4
 from .kvaerno5 import Kvaerno5 as Kvaerno5
 from .leapfrog_midpoint import LeapfrogMidpoint as LeapfrogMidpoint
 from .midpoint import Midpoint as Midpoint
-from .midpoint_simple import MidpointSimple as MidpointSimple
 from .milstein import (
     ItoMilstein as ItoMilstein,
     StratonovichMilstein as StratonovichMilstein,
@@ -44,6 +43,11 @@ from .semi_implicit_euler import SemiImplicitEuler as SemiImplicitEuler
 from .shark import ShARK as ShARK
 from .shark_general import GeneralShARK as GeneralShARK
 from .sil3 import Sil3 as Sil3
+from .simple_rk import (
+    MidpointSimple as MidpointSimple,
+    RK3Simple as RK3Simple,
+    RK4Simple as RK4Simple,
+)
 from .slowrk import SlowRK as SlowRK
 from .spark import SPaRK as SPaRK
 from .sra1 import SRA1 as SRA1
