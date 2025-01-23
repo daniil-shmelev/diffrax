@@ -48,6 +48,7 @@ from .shark_general import GeneralShARK as GeneralShARK
 from .should import ShOULD as ShOULD
 from .sil3 import Sil3 as Sil3
 from .simple_rk import (
+    Bosh3Simple as Bosh3Simple,
     MidpointSimple as MidpointSimple,
     RK3Simple as RK3Simple,
     RK4Simple as RK4Simple,

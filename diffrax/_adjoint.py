@@ -988,13 +988,13 @@ def _loop_reversible_bwd(
         else:
             grad_y0 = (ω(grad_ys)[ts_index - 1]).ω  # pyright: ignore
 
-        solver_step_fn = ft.partial(solver_step, t1, t0, original_solver_state)
+        solver_step_fn = jtu.Partial(solver_step, t1, t0, original_solver_state)
         step_y1, vjp_fun_y1, original_solver_state = eqx.filter_vjp(
             solver_step_fn, y1, args, terms, has_aux=True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
 
-        solver_step_fn = ft.partial(solver_step, t0, t1, original_solver_state)
+        solver_step_fn = jtu.Partial(solver_step, t0, t1, original_solver_state)
         step_z0, vjp_fun_z0, _ = eqx.filter_vjp(
             solver_step_fn, z0, args, terms, has_aux=True
         )
@@ -1277,7 +1277,7 @@ class _Reversible(
     ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
         original_solver_state, z0 = solver_state
 
-        step_z0, z_error, dense_info, original_solver_state, result1 = self.solver.step(
+        step_z0, _, dense_info, original_solver_state, result1 = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
         y1 = (self.l * (ω(y0) - ω(z0)) + ω(step_z0)).ω
@@ -1290,7 +1290,7 @@ class _Reversible(
         solver_state = (original_solver_state, z1)
         result = update_result(result1, result2)
 
-        return y1, _add_maybe_none(z_error, y_error), dense_info, solver_state, result
+        return y1, y_error, dense_info, solver_state, result
 
     def func(
         self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args

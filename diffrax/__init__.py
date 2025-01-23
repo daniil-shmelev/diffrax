@@ -84,6 +84,7 @@ from ._solver import (
     AbstractWrappedSolver as AbstractWrappedSolver,
     ALIGN as ALIGN,
     Bosh3 as Bosh3,
+    Bosh3Simple as Bosh3Simple,
     ButcherTableau as ButcherTableau,
     CalculateJacobian as CalculateJacobian,
     Dopri5 as Dopri5,
