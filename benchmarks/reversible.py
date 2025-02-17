@@ -1,65 +1,117 @@
+import os
 import time
 
 import diffrax as dfx
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.random as jr
 
 
-class VectorField(eqx.Module):
-    layers: list
+os.environ["XLA_FLAGS"] = "--xla_cpu_use_thunk_runtime=false"
 
-    def __init__(self, key):
-        key1, key2 = jr.split(key, 2)
-        self.layers = [
-            eqx.nn.Linear(1, 10, use_bias=True, key=key1),
-            jnp.tanh,
-            eqx.nn.Linear(10, 1, use_bias=True, key=key2),
-        ]
+jax.config.update("jax_enable_x64", True)
+
+
+class VectorField(eqx.Module):
+    mlp: eqx.nn.MLP
+
+    def __init__(self, y_dim, width_size, depth, key):
+        self.mlp = eqx.nn.MLP(y_dim, y_dim, width_size, depth, key=key)
 
     def __call__(self, t, y, args):
-        for layer in self.layers:
-            y = layer(y)
-        return y
+        return self.mlp(y)
 
 
-@eqx.filter_value_and_grad
-def grad_loss(y0__term, t1, adjoint, solver):
-    y0, term = y0__term
-    t0 = 0
+@eqx.filter_jit
+def solve(model, y0, adjoint):
+    term = dfx.ODETerm(model)
+    solver = dfx.Euler()
+    t0 = 0.0
+    t1 = 5.0
     dt0 = 0.01
-    max_steps = int((t1 - t0) / dt0)
-    ys = dfx.diffeqsolve(
+    sol = dfx.diffeqsolve(
         term,
         solver,
         t0,
         t1,
         dt0,
         y0,
+        saveat=dfx.SaveAt(t1=True),
         adjoint=adjoint,
-        max_steps=max_steps,
-    ).ys
+        max_steps=500,
+    )
+    return sol.ys
 
-    return jnp.sum(ys**2)  # pyright: ignore
+
+@eqx.filter_value_and_grad
+def grad_loss(model, y0, adjoint):
+    ys = solve(model, y0, adjoint)
+    return jnp.mean(ys**2)
 
 
-def run(adjoint, solver, t1):
-    term = dfx.ODETerm(VectorField(jr.PRNGKey(0)))
-    y0 = jnp.array([1.0])
-
+def measure_runtime(y0, model, adjoint):
     tic = time.time()
-    grad_loss((y0, term), t1, adjoint, solver)
+    loss, grads = grad_loss(model, y0, adjoint)
     toc = time.time()
-    runtime = toc - tic
+    print(f"Compile time: {(toc - tic):.5f}")
 
-    return runtime
+    repeats = 10
+    tic = time.time()
+    for i in range(repeats):
+        loss, grads = jax.block_until_ready(grad_loss(model, y0, adjoint))
+    toc = time.time()
+    print(f"Runtime: {((toc - tic) / repeats):.5f}")
+
+
+def ydim():
+    y_dim = 10
+    depth = 4
+    model = VectorField(y_dim, y_dim, depth, key=jr.PRNGKey(10))
+
+    print(f"y_dim = {y_dim}")
+    print("--------------")
+    y0 = jnp.linspace(1.0, 10.0, num=y_dim)
+    print("Recursive")
+    adjoint = dfx.RecursiveCheckpointAdjoint()
+    measure_runtime(y0, model, adjoint)
+    print("Reversible")
+    adjoint = dfx.ReversibleAdjoint()
+    measure_runtime(y0, model, adjoint)
+
+    y_dim = 100
+    model = VectorField(y_dim, y_dim, depth, key=jr.PRNGKey(10))
+    print(f"\ny_dim = {y_dim}")
+    print("-----------------")
+    y0 = jnp.linspace(1.0, 10.0, num=y_dim)
+    print("Recursive")
+    adjoint = dfx.RecursiveCheckpointAdjoint()
+    measure_runtime(y0, model, adjoint)
+    print("Reversible")
+    adjoint = dfx.ReversibleAdjoint()
+    measure_runtime(y0, model, adjoint)
+
+
+def profile(adjoint):
+    y_dim = 1000
+    depth = 4
+    model = VectorField(y_dim, y_dim, depth, key=jr.PRNGKey(10))
+    y0 = jnp.linspace(1.0, 10.0, num=y_dim)
+
+    grad_loss(model, y0, adjoint)
 
 
 if __name__ == "__main__":
-    adjoint = dfx.ReversibleAdjoint()
-    solver = dfx.Midpoint()
-    compiletime = run(adjoint, solver, t1=10)
-    print(f"Compilation time: {compiletime:.3f}")
+    with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+        adjoint = dfx.ReversibleAdjoint()
+        profile(adjoint)
 
-    runtime = run(adjoint, solver, t1=10)
-    print(f"Runtime: {runtime:.3f}")
+    # y_dim = 1000
+    # depth = 4
+    # model = VectorField(y_dim, y_dim, depth, key=jr.PRNGKey(10))
+    # y0 = jnp.linspace(1.0, 10.0, num=y_dim)
+    # adjoint = dfx.RecursiveCheckpointAdjoint()
+    # measure_runtime(y0, model, adjoint)
+
+    # adjoint = dfx.ReversibleAdjoint()
+    # measure_runtime(y0, model, adjoint)

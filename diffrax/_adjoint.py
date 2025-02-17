@@ -1290,7 +1290,7 @@ class _Reversible(
         solver_state = (original_solver_state, z1)
         result = update_result(result1, result2)
 
-        return y1, _add_maybe_none(z_error, y_error), dense_info, solver_state, result
+        return y1, y_error, dense_info, solver_state, result
 
     def func(
         self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args
