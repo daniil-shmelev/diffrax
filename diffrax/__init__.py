@@ -108,6 +108,7 @@ from ._solver import (
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
+    SemiShARK as SemiShARK,
     ShARK as ShARK,
     ShOULD as ShOULD,
     Sil3 as Sil3,
