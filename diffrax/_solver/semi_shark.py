@@ -88,14 +88,18 @@ class SemiShARK(AbstractStratonovichSolver):
         # Shift rv's
         W_shift = (1 + 0.5 * gamma * dt) * W + gamma * dt * H
         H_shift = H - 1 / 12 * gamma * dt * W - 0.5 * gamma * dt * H
-        del W, H
 
-        y0_shift = y0 + H_shift
+        # Diffusion
+        g0 = diffusion.vf(t0, y0, args)
+        g1 = diffusion.vf(t1, y0, args)
+        g_delta = g1 - g0
+
+        y0_shift = y0 + g0 * H_shift
         y1_shift = (
             jnp.exp(alpha * gamma * dt) * y0
             + (jnp.exp(alpha * gamma * dt) - 1) / gamma * drift.vf(t0, y0_shift, args)
-            + c1 / c2 * dt * W_shift
-            + jnp.exp(alpha * gamma * dt) * H_shift
+            + c1 / c2 * dt * g0 * W_shift
+            + jnp.exp(alpha * gamma * dt) * g0 * H_shift
         )
 
         y1 = (
@@ -103,7 +107,8 @@ class SemiShARK(AbstractStratonovichSolver):
             + (jnp.exp(gamma * dt) - 1) / gamma * drift.vf(t0, y0_shift, args)
             + c2
             * (drift.vf(t0 + alpha * dt, y1_shift, args) - drift.vf(t0, y0_shift, args))
-            + W_shift
+            + g0 * W_shift
+            + g_delta * (0.5 * W - H)
         )
         dense_info = dict(y0=y0, y1=y1)
         return y1, None, dense_info, None, RESULTS.successful
