@@ -1013,7 +1013,7 @@ def _loop_reversible_bwd(
         t1 = ts[ts_index]
         t0 = ts[ts_index - 1]
 
-        y0, _, dense_info, solver_state, _ = solver.backward_step(
+        y0, dense_info, solver_state = solver.backward_step(
             terms, t0, t1, y1, args, solver_state, False
         )
 
@@ -1032,8 +1032,8 @@ def _loop_reversible_bwd(
             t = saveat_ts[saveat_ts_index]
             grad_y = (ω(grad_ys)[saveat_ts_index]).ω
             _, interp_vjp = eqx.filter_vjp(interpolate, t, t0, t1, dense_info)
-            interp_grads = interp_vjp(grad_y)
-            grad_dense_info = eqx.apply_updates(grad_dense_info, interp_grads[3])
+            _, _, _, dgrad_dense_info = interp_vjp(grad_y)
+            grad_dense_info = eqx.apply_updates(grad_dense_info, dgrad_dense_info)
             saveat_ts_index = saveat_ts_index - 1
             return saveat_ts_index, grad_dense_info
 
@@ -1045,12 +1045,12 @@ def _loop_reversible_bwd(
         # Pull gradients back through forward step
 
         _, vjp_fn = eqx.filter_vjp(forward_step, y0, solver_state, args, terms)
-        dgrad_y1 = vjp_fn((grad_y1, grad_dense_info, grad_state))
+        grad_y0, grad_state, dgrad_args, dgrad_terms = vjp_fn(
+            (grad_y1, grad_dense_info, grad_state)
+        )
 
-        grad_y0 = dgrad_y1[0]
-        grad_state = dgrad_y1[1]
-        grad_args = eqx.apply_updates(grad_args, dgrad_y1[2])
-        grad_terms = eqx.apply_updates(grad_terms, dgrad_y1[3])
+        grad_args = eqx.apply_updates(grad_args, dgrad_args)
+        grad_terms = eqx.apply_updates(grad_terms, dgrad_terms)
 
         ts_index = ts_index - 1
 
@@ -1080,7 +1080,7 @@ def _loop_reversible_bwd(
         grad_terms,
     )
 
-    state = eqxi.while_loop(cond_fun, grad_step, state, kind="lax")
+    state = jax.lax.while_loop(cond_fun, grad_step, state)
     _, _, y0, _, grad_y0, grad_state, grad_args, grad_terms = state
 
     # Pull solver_state gradients back onto y0, args, terms.
@@ -1121,22 +1121,17 @@ class ReversibleAdjoint(AbstractAdjoint):
                 "`max_steps=None` is incompatible with `ReversibleAdjoint`."
             )
 
-        if jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat) != jtu.tree_structure(
-            0
+        if (
+            jtu.tree_structure(saveat.subs, is_leaf=_is_subsaveat)
+            != jtu.tree_structure(0)
+            or saveat.dense
+            or saveat.subs.steps
+            or (saveat.subs.fn is not save_y)
         ):
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with `SaveAt(subs=...)`."
-            )
-
-        if saveat.dense or saveat.subs.steps:
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with "
-                "`saveat=SaveAt(steps=True)` or saveat=SaveAt(dense=True)`."
-            )
-
-        if saveat.subs.fn is not save_y:
-            raise NotImplementedError(
-                "Cannot use `adjoint=ReversibleAdjoint()` with `saveat=SaveAt(fn=...)`."
+            raise ValueError(
+                """`ReversibleAdjoint` is only compatible with the following `SaveAt` 
+                properties: `t0`, `t1`, `ts`, `fn=save_y` (default).
+                """
             )
 
         if event is not None:
@@ -1149,20 +1144,6 @@ class ReversibleAdjoint(AbstractAdjoint):
                 "`adjoint=ReversibleAdjoint()` does not support `UnsafeBrownianPath`. "
                 "Consider using `VirtualBrownianTree` instead."
             )
-        if is_sde(terms):
-            if isinstance(solver, AbstractItoSolver):
-                raise NotImplementedError(
-                    f"`{solver.__class__.__name__}` converges to the Itô solution. "
-                    "However `ReversibleAdjoint` currently only supports Stratonovich "
-                    "SDEs."
-                )
-            elif not isinstance(solver, AbstractStratonovichSolver):
-                warnings.warn(
-                    f"{solver.__class__.__name__} is not marked as converging to "
-                    "either the Itô or the Stratonovich solution. Note that "
-                    "`ReversibleAdjoint` will only produce the correct solution for "
-                    "Stratonovich SDEs."
-                )
 
         y = init_state.y
         init_state = eqx.tree_at(lambda s: s.y, init_state, object())
