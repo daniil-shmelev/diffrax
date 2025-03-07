@@ -160,3 +160,29 @@ def test_leapfrog_midpoint(saveat):
     _compare_grads(
         (y0, args, terms), solver, saveat, stepsize_controller, dual_y0=False
     )
+
+
+@pytest.mark.parametrize(
+    "stepsize_controller",
+    [diffrax.ConstantStepSize(), diffrax.PIDController(rtol=1e-8, atol=1e-8)],
+)
+@pytest.mark.parametrize(
+    "saveat",
+    [
+        diffrax.SaveAt(t0=True, t1=True),
+        diffrax.SaveAt(t0=True, ts=jnp.linspace(0, 5, 10), t1=True),
+    ],
+)
+def test_reversible(stepsize_controller, saveat):
+    n = 10
+    y0 = jnp.linspace(1, 10, num=n)
+    key = jr.PRNGKey(10)
+    f = VectorField(n, n, n, depth=4, key=key)
+    terms = diffrax.ODETerm(f)
+    y0 = y0
+    args = jnp.linspace(0, 1, n)
+    solver = diffrax.Reversible(diffrax.Tsit5())
+
+    _compare_grads(
+        (y0, args, terms), solver, saveat, stepsize_controller, dual_y0=False
+    )
