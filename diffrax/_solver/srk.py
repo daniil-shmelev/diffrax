@@ -353,7 +353,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
             ignore_stage_g = jnp.array(self.tableau.ignore_stage_g)
 
         # time increment
-        h = t1 - t0
+        direction = jnp.where(t0 >= 0, 1, -1)
+        h = direction * (t1 - t0)
 
         # First the drift related stuff
         a = self._embed_a_lower(self.tableau.a, dtype)
