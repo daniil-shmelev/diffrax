@@ -352,10 +352,6 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         else:
             ignore_stage_g = jnp.array(self.tableau.ignore_stage_g)
 
-        # time increment
-        direction = jnp.where(t0 >= 0, 1, -1)
-        h = direction * (t1 - t0)
-
         # First the drift related stuff
         a = self._embed_a_lower(self.tableau.a, dtype)
         c = jnp.asarray(
@@ -381,6 +377,8 @@ class AbstractSRK(AbstractSolver[_SolverState]):
         # Now the diffusion related stuff
         # Brownian increment (and space-time Lévy area)
         bm_inc = diffusion.contr(t0, t1, use_levy=True)
+        h = bm_inc.dt
+
         if not isinstance(bm_inc, self.minimal_levy_area):
             raise ValueError(
                 f"The Brownian increment {bm_inc} does not have the "
