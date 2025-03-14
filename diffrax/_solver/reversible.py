@@ -88,7 +88,7 @@ class Reversible(
         y1 = (self.l * (ω(y0) - ω(z0)) + ω(step_z0)).ω
 
         step_y1, y_error, _, _, result2 = self.solver.step(
-            terms, t1, t0, y1, args, original_solver_state, False
+            terms, t1, t0, y1, args, original_solver_state, True
         )
         z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
 
@@ -113,7 +113,7 @@ class Reversible(
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
         step_z0, _, dense_info, _, _ = self.solver.step(
-            terms, t0, t1, z0, args, original_solver_state, False
+            terms, t0, t1, z0, args, original_solver_state, True
         )
         y0 = ((1 / self.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
         solver_state = (original_solver_state, z0)
