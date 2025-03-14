@@ -8,7 +8,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._solution import RESULTS, update_result
 from .._solver.base import (
     AbstractReversibleSolver,
-    AbstractSolver,
+    AbstractStratonovichSolver,
     AbstractWrappedSolver,
 )
 from .._term import AbstractTerm
@@ -26,12 +26,54 @@ class Reversible(
     """
     Reversible solver method.
 
-    Allows any solver ([`diffrax.AbstractSolver`][]) to be made algebraically
-    reversible.
+    Allows any solver ([`diffrax.AbstractStratonovichSolver`][]) to be made
+    algebraically reversible.
+
+    **Arguments:**
+    - `solver`: base solver to be made reversible
+    - `coupling_parameter`: determines coupling between the two evolving solutions.
+    Must be within the range `0 < coupling_parameter < 1`. Unless you need finer control
+    over stability, the default value of `0.999` should be sufficient.
+
+    ??? cite "References"
+
+        This method was developed in:
+
+        ```bibtex
+        @article{mccallum2024efficient,
+            title={Efficient, Accurate and Stable Gradients for Neural ODEs},
+            author={McCallum, Sam and Foster, James},
+            journal={arXiv preprint arXiv:2410.11648},
+            year={2024}
+        }
+        ```
+
+        And built on previous work by:
+
+        ```bibtex
+        @article{kidger2021efficient,
+            title={Efficient and accurate gradients for neural sdes},
+            author={Kidger, Patrick and Foster, James and Li, Xuechen Chen and Lyons,
+                    Terry},
+            journal={Advances in Neural Information Processing Systems},
+            volume={34},
+            pages={18747--18761},
+            year={2021}
+        }
+
+        @article{zhuang2021mali,
+            title={Mali: A memory efficient and reverse accurate integrator for neural
+                    odes},
+            author={Zhuang, Juntang and Dvornek, Nicha C and Tatikonda, Sekhar and
+            Duncan, James S},
+            journal={arXiv preprint arXiv:2102.04668},
+            year={2021}
+        }
+        ```
     """
 
-    solver: AbstractSolver
-    l: float = 0.999
+    solver: AbstractStratonovichSolver
+    coupling_parameter: float = 0.999
 
     @property
     def interpolation_cls(self):  # pyright: ignore
@@ -85,7 +127,7 @@ class Reversible(
         step_z0, _, dense_info, original_solver_state, result1 = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
-        y1 = (self.l * (ω(y0) - ω(z0)) + ω(step_z0)).ω
+        y1 = (self.coupling_parameter * (ω(y0) - ω(z0)) + ω(step_z0)).ω
 
         step_y1, y_error, _, _, result2 = self.solver.step(
             terms, t1, t0, y1, args, original_solver_state, True
@@ -115,7 +157,7 @@ class Reversible(
         step_z0, _, dense_info, _, _ = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
-        y0 = ((1 / self.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
+        y0 = ((1 / self.coupling_parameter) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
         solver_state = (original_solver_state, z0)
 
         return y0, dense_info, solver_state

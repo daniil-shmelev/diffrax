@@ -1099,7 +1099,34 @@ class ReversibleAdjoint(AbstractAdjoint):
     [`diffrax.AbstractReversibleSolver`][].
 
     Gradient calculation is exact (up to floating point errors) and backpropagation
-    is linear in time $O(n)$ and constant in memory $O(1)$, for $n$ time steps.
+    becomes linear in time $O(n)$ and constant in memory $O(1)$, for $n$ time steps.
+
+    !!! note
+
+        This adjoint can be less numerically stable than
+        [`diffrax.RecursiveCheckpointAdjoint`][] and [`diffrax.DirectAdjoint`][].
+        Stability can be largely improved by using [double (64bit) precision](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-64bit-precision)
+        and [smaller/adaptive step sizes](https://docs.kidger.site/diffrax/api/stepsize_controller/).
+
+    ??? cite "References"
+
+        For an introduction to reversible backpropagation, see these references:
+
+        ```bibtex
+        @article{mccallum2024efficient,
+            title={Efficient, Accurate and Stable Gradients for Neural ODEs},
+            author={McCallum, Sam and Foster, James},
+            journal={arXiv preprint arXiv:2410.11648},
+            year={2024}
+        }
+
+        @phdthesis{kidger2021on,
+            title={{O}n {N}eural {D}ifferential {E}quations},
+            author={Patrick Kidger},
+            year={2021},
+            school={University of Oxford},
+        }
+        ```
     """
 
     def loop(
