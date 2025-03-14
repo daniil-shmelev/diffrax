@@ -8,7 +8,7 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._solution import RESULTS, update_result
 from .._solver.base import (
     AbstractReversibleSolver,
-    AbstractStratonovichSolver,
+    AbstractSolver,
     AbstractWrappedSolver,
 )
 from .._term import AbstractTerm
@@ -26,7 +26,7 @@ class Reversible(
     """
     Reversible solver method.
 
-    Allows any solver ([`diffrax.AbstractStratonovichSolver`][]) to be made
+    Allows any solver ([`diffrax.AbstractSolver`][]) to be made
     algebraically reversible.
 
     **Arguments:**
@@ -34,6 +34,9 @@ class Reversible(
     - `coupling_parameter`: determines coupling between the two evolving solutions.
     Must be within the range `0 < coupling_parameter < 1`. Unless you need finer control
     over stability, the default value of `0.999` should be sufficient.
+
+    !!! note
+        When solving SDEs, the base `solver` must converge to the Statonovich solution.
 
     ??? cite "References"
 
@@ -72,7 +75,7 @@ class Reversible(
         ```
     """
 
-    solver: AbstractStratonovichSolver
+    solver: AbstractSolver
     coupling_parameter: float = 0.999
 
     @property
