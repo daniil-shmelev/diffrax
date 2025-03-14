@@ -9,6 +9,7 @@ from .._solution import RESULTS, update_result
 from .._solver.base import (
     AbstractReversibleSolver,
     AbstractSolver,
+    AbstractWrappedSolver,
 )
 from .._term import AbstractTerm
 
@@ -19,7 +20,9 @@ _BaseSolverState = TypeVar("_BaseSolverState")
 _SolverState: TypeAlias = tuple[_BaseSolverState, Y]
 
 
-class Reversible(AbstractReversibleSolver):
+class Reversible(
+    AbstractReversibleSolver[_SolverState], AbstractWrappedSolver[_SolverState]
+):
     """
     Reversible solver method.
 
@@ -105,12 +108,12 @@ class Reversible(AbstractReversibleSolver):
         made_jump: BoolScalarLike,
     ) -> tuple[Y, DenseInfo, _SolverState]:
         original_solver_state, z1 = solver_state
-        step_y1, y_error, _, original_solver_state, result2 = self.solver.step(
-            terms, t1, t0, y1, args, original_solver_state, False
+        step_y1, _, _, original_solver_state, _ = self.solver.step(
+            terms, t1, t0, y1, args, original_solver_state, True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
-        step_z0, _, dense_info, _, result1 = self.solver.step(
-            terms, t0, t1, z0, args, original_solver_state, True
+        step_z0, _, dense_info, _, _ = self.solver.step(
+            terms, t0, t1, z0, args, original_solver_state, False
         )
         y0 = ((1 / self.l) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
         solver_state = (original_solver_state, z0)
