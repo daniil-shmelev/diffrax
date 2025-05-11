@@ -76,6 +76,7 @@ from ._solver import (
     AbstractFosterLangevinSRK as AbstractFosterLangevinSRK,
     AbstractImplicitSolver as AbstractImplicitSolver,
     AbstractItoSolver as AbstractItoSolver,
+    AbstractReversibleSolver as AbstractReversibleSolver,
     AbstractRungeKutta as AbstractRungeKutta,
     AbstractSDIRK as AbstractSDIRK,
     AbstractSolver as AbstractSolver,

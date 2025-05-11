@@ -3,6 +3,7 @@ from .base import (
     AbstractAdaptiveSolver as AbstractAdaptiveSolver,
     AbstractImplicitSolver as AbstractImplicitSolver,
     AbstractItoSolver as AbstractItoSolver,
+    AbstractReversibleSolver as AbstractReversibleSolver,
     AbstractSolver as AbstractSolver,
     AbstractStratonovichSolver as AbstractStratonovichSolver,
     AbstractWrappedSolver as AbstractWrappedSolver,
