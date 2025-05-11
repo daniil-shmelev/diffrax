@@ -33,9 +33,9 @@ class SemiImplicitEuler(AbstractReversibleSolver):
     """
 
     term_structure: ClassVar = (AbstractTerm, AbstractTerm)
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         return 1
@@ -83,7 +83,7 @@ class SemiImplicitEuler(AbstractReversibleSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[tuple[Ya, Yb], DenseInfo, _SolverState]:
+    ) -> tuple[tuple[Ya, Yb], DenseInfo, _SolverState, RESULTS]:
         del solver_state, made_jump
 
         term_1, term_2 = terms
@@ -96,7 +96,7 @@ class SemiImplicitEuler(AbstractReversibleSolver):
 
         y0 = (y0_1, y0_2)
         dense_info = dict(y0=y0, y1=y1)
-        return y0, dense_info, None
+        return y0, dense_info, None, RESULTS.successful
 
     def func(
         self,

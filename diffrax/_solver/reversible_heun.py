@@ -49,9 +49,9 @@ class ReversibleHeun(
     """
 
     term_structure: ClassVar = AbstractTerm
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation  # TODO use something better than this?
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation  # TODO use something better than this?
+    )
 
     def order(self, terms):
         return 2
@@ -104,7 +104,7 @@ class ReversibleHeun(
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, DenseInfo, _SolverState]:
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
         yhat1, vf1 = solver_state
 
         control = terms.contr(t0, t1)
@@ -114,7 +114,7 @@ class ReversibleHeun(
 
         dense_info = dict(y0=y0, y1=y1)
         solver_state = (yhat0, vf0)
-        return y0, dense_info, solver_state
+        return y0, dense_info, solver_state, RESULTS.successful
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)

@@ -153,19 +153,21 @@ class Reversible(
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, DenseInfo, _SolverState]:
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
         original_solver_state, z1 = solver_state
-        step_y1, _, _, original_solver_state, _ = self.solver.step(
+        step_y1, _, _, original_solver_state, result1 = self.solver.step(
             terms, t1, t0, y1, args, original_solver_state, True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
-        step_z0, _, dense_info, _, _ = self.solver.step(
+        step_z0, _, dense_info, _, result2 = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
         y0 = ((1 / self.coupling_parameter) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
-        solver_state = (original_solver_state, z0)
 
-        return y0, dense_info, solver_state
+        solver_state = (original_solver_state, z0)
+        result = update_result(result1, result2)
+
+        return y0, dense_info, solver_state, result
 
     def func(
         self, terms: PyTree[AbstractTerm], t0: RealScalarLike, y0: Y, args: Args

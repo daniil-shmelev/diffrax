@@ -52,9 +52,9 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
     """
 
     term_structure: ClassVar = AbstractTerm
-    interpolation_cls: ClassVar[
-        Callable[..., LocalLinearInterpolation]
-    ] = LocalLinearInterpolation
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     def order(self, terms):
         return 2
@@ -101,7 +101,7 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, DenseInfo, _SolverState]:
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
         del made_jump
         t0, y0, dt = solver_state
         tm1 = t0 - dt
@@ -114,7 +114,7 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
         solver_state = jax.lax.cond(
             tm1 > 0, lambda _: (tm1, ym1, dt), lambda _: (t0, y0, dt), None
         )
-        return y0, dense_info, solver_state
+        return y0, dense_info, solver_state, RESULTS.successful
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
         return terms.vf(t0, y0, args)

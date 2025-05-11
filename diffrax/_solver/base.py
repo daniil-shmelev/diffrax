@@ -371,7 +371,7 @@ class AbstractReversibleSolver(AbstractSolver[_SolverState]):
         args: Args,
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
-    ) -> tuple[Y, DenseInfo, _SolverState]:
+    ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
         """
         Make a single backward step with the reversible solver.
 
