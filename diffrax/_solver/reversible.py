@@ -30,12 +30,14 @@ class Reversible(
     algebraically reversible.
 
     **Arguments:**
+
     - `solver`: base solver to be made reversible
     - `coupling_parameter`: determines coupling between the two evolving solutions.
     Must be within the range `0 < coupling_parameter < 1`. Unless you need finer control
     over stability, the default value of `0.999` should be sufficient.
 
     !!! note
+
         When solving SDEs, the base `solver` must converge to the Statonovich solution.
 
     ??? cite "References"
