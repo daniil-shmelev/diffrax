@@ -8,10 +8,10 @@ from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF,
 from .._solution import RESULTS, update_result
 from .._solver.base import (
     AbstractReversibleSolver,
-    AbstractSolver,
     AbstractWrappedSolver,
 )
 from .._term import AbstractTerm
+from .runge_kutta import AbstractERK
 
 
 ω = cast(Callable, ω)
@@ -26,7 +26,7 @@ class Reversible(
     """
     Reversible solver method.
 
-    Allows any solver ([`diffrax.AbstractSolver`][]) to be made
+    Allows any explicit Runge-Kutta solver ([`diffrax.AbstractERK`][]) to be made
     algebraically reversible.
 
     **Arguments:**
@@ -77,7 +77,7 @@ class Reversible(
         ```
     """
 
-    solver: AbstractSolver
+    solver: AbstractERK
     coupling_parameter: float = 0.999
 
     @property
@@ -114,6 +114,10 @@ class Reversible(
         y0: Y,
         args: Args,
     ) -> _SolverState:
+        if not isinstance(self.solver, AbstractERK):
+            raise ValueError(
+                "`Reversible` is only compatible with `AbstractERK` base solvers."
+            )
         original_solver_init = self.solver.init(terms, t0, t1, y0, args)
         return (original_solver_init, y0)
 

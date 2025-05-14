@@ -16,6 +16,7 @@ from equinox.internal import ω
 
 from ._heuristics import is_sde, is_unsafe_sde
 from ._saveat import save_y, SaveAt, SubSaveAt
+from ._solution import RESULTS
 from ._solver import (
     AbstractItoSolver,
     AbstractRungeKutta,
@@ -994,9 +995,10 @@ def _loop_reversible_bwd(
 
     def grad_step(state):
         def forward_step(y0, solver_state, args, terms):
-            y1, _, dense_info, new_solver_state, _ = solver.step(
+            y1, _, dense_info, new_solver_state, result = solver.step(
                 terms, t0, t1, y0, args, solver_state, False
             )
+            assert result == RESULTS.successful
             return y1, dense_info, new_solver_state
 
         (
@@ -1016,6 +1018,7 @@ def _loop_reversible_bwd(
         y0, dense_info, solver_state, result = solver.backward_step(
             terms, t0, t1, y1, args, solver_state, False
         )
+        assert result == RESULTS.successful
 
         # Pull gradients back through interpolation
 

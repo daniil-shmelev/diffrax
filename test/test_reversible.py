@@ -205,34 +205,6 @@ def test_reversible_explicit(stepsize_controller, saveat):
         diffrax.SaveAt(t0=True, ts=jnp.linspace(0, 5, 10), t1=True),
     ],
 )
-def test_reversible_implicit(saveat):
-    n = 10
-    y0 = jnp.linspace(1, 10, num=n)
-    key = jr.PRNGKey(10)
-    f = VectorField(n, n, n, depth=4, key=key)
-    terms = diffrax.ODETerm(f)
-    args = jnp.array([0.5])
-    base_solver = diffrax.Kvaerno5()
-    solver = diffrax.Reversible(base_solver)
-    stepsize_controller = diffrax.PIDController(rtol=1e-8, atol=1e-8)
-
-    _compare_grads(
-        (y0, args, terms),
-        solver,
-        solver,
-        saveat,
-        stepsize_controller,
-        dual_y0=False,
-    )
-
-
-@pytest.mark.parametrize(
-    "saveat",
-    [
-        diffrax.SaveAt(t0=True, t1=True),
-        diffrax.SaveAt(t0=True, ts=jnp.linspace(0, 5, 10), t1=True),
-    ],
-)
 def test_reversible_sde(saveat):
     n = 10
     y0 = jnp.linspace(1, 10, num=n)
