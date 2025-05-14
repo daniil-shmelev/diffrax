@@ -937,12 +937,20 @@ def _loop_reversible(y__args__terms, *, self, throw, max_steps, init_state, **kw
 def _loop_reversible_fwd(perturbed, y__args__terms, **kwargs):
     del perturbed
     final_state, aux_stats = _loop_reversible(y__args__terms, **kwargs)
+    init_ts = final_state.reversible_init_ts
     ts = final_state.reversible_ts
     ts_final_index = final_state.reversible_save_index
     y1 = final_state.y
     save_state = final_state.save_state
     solver_state = final_state.solver_state
-    return (final_state, aux_stats), (ts, ts_final_index, y1, save_state, solver_state)
+    return (final_state, aux_stats), (
+        init_ts,
+        ts,
+        ts_final_index,
+        y1,
+        save_state,
+        solver_state,
+    )
 
 
 @_loop_reversible.def_bwd
@@ -962,7 +970,7 @@ def _loop_reversible_bwd(
     assert event is None
 
     del perturbed, self, init_state, kwargs
-    ts, ts_final_index, y1, save_state, solver_state = residuals
+    init_ts, ts, ts_final_index, y1, save_state, solver_state = residuals
     del residuals
 
     grad_final_state, _ = grad_final_state__aux_stats
@@ -1088,7 +1096,8 @@ def _loop_reversible_bwd(
 
     # Pull solver_state gradients back onto y0, args, terms.
 
-    _, init_vjp = eqx.filter_vjp(solver.init, terms, ts[0], ts[1], y0, args)
+    init_t0, init_t1 = init_ts
+    _, init_vjp = eqx.filter_vjp(solver.init, terms, init_t0, init_t1, y0, args)
     dgrad_terms, _, _, dgrad_y0, dgrad_args = init_vjp(grad_state)
     grad_y0 = eqx.apply_updates(grad_y0, dgrad_y0)
     grad_terms = eqx.apply_updates(grad_terms, dgrad_terms)

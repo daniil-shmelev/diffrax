@@ -115,6 +115,7 @@ class State(eqx.Module):
     #
     # Information for reversible adjoint (save ts)
     #
+    reversible_init_ts: Optional[PyTree[FloatScalarLike]]
     reversible_ts: Optional[eqxi.MaybeBuffer[Float[Array, " times_plus_1"]]]
     reversible_save_index: Optional[IntScalarLike]
 
@@ -595,6 +596,7 @@ def loop(
                 result,
             )
 
+        reversible_init_ts = state.reversible_init_ts
         reversible_ts = state.reversible_ts
         reversible_save_index = state.reversible_save_index
 
@@ -625,6 +627,7 @@ def loop(
             event_dense_info=event_dense_info,
             event_values=event_values,
             event_mask=event_mask,
+            reversible_init_ts=reversible_init_ts,
             reversible_ts=reversible_ts,  # pyright: ignore[reportArgumentType]
             reversible_save_index=reversible_save_index,
         )
@@ -1408,9 +1411,11 @@ def diffeqsolve(
 
     # Reversible info
     if max_steps is None:
+        reversible_init_ts = None
         reversible_ts = None
         reversible_save_index = None
     else:
+        reversible_init_ts = (tprev, tnext)
         reversible_ts = jnp.full(max_steps + 1, jnp.inf, dtype=time_dtype)
         reversible_save_index = 0
 
@@ -1436,6 +1441,7 @@ def diffeqsolve(
         event_dense_info=event_dense_info,
         event_values=event_values,
         event_mask=event_mask,
+        reversible_init_ts=reversible_init_ts,
         reversible_ts=reversible_ts,
         reversible_save_index=reversible_save_index,
     )
