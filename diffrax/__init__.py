@@ -107,7 +107,6 @@ from ._solver import (
     MultiButcherTableau as MultiButcherTableau,
     QUICSORT as QUICSORT,
     Ralston as Ralston,
-    Reversible as Reversible,
     ReversibleHeun as ReversibleHeun,
     SEA as SEA,
     SemiImplicitEuler as SemiImplicitEuler,
@@ -120,6 +119,7 @@ from ._solver import (
     StochasticButcherTableau as StochasticButcherTableau,
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
+    UReversible as UReversible,
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,

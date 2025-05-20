@@ -21,11 +21,11 @@ _BaseSolverState = TypeVar("_BaseSolverState")
 _SolverState: TypeAlias = tuple[_BaseSolverState, Y]
 
 
-class Reversible(
+class UReversible(
     AbstractReversibleSolver[_SolverState], AbstractWrappedSolver[_SolverState]
 ):
     """
-    Reversible solver method.
+    U-Reversible solver method.
 
     Allows any explicit Runge-Kutta solver ([`diffrax.AbstractERK`][]) to be made
     algebraically reversible.
@@ -116,7 +116,7 @@ class Reversible(
     ) -> _SolverState:
         if not isinstance(self.solver, AbstractERK):
             raise ValueError(
-                "`Reversible` is only compatible with `AbstractERK` base solvers."
+                "`UReversible` is only compatible with `AbstractERK` base solvers."
             )
         original_solver_init = self.solver.init(terms, t0, t1, y0, args)
         return (original_solver_init, y0)

@@ -186,7 +186,7 @@ def test_reversible_explicit(stepsize_controller, saveat):
     terms = diffrax.ODETerm(f)
     args = jnp.array([0.5])
     base_solver = diffrax.Tsit5()
-    solver = diffrax.Reversible(base_solver)
+    solver = diffrax.UReversible(base_solver)
 
     # If we're using SaveAt(ts=...) then we can only compare the grads from:
     # Reversible solver + ReversibleAdjoint, and
@@ -223,7 +223,7 @@ def test_reversible_sde(saveat):
     terms = diffrax.MultiTerm(diffrax.ODETerm(f), diffrax.ControlTerm(g, W))
     args = jnp.array([0.5])
     base_solver = diffrax.Heun()
-    solver = diffrax.Reversible(base_solver)
+    solver = diffrax.UReversible(base_solver)
     stepsize_controller = diffrax.ConstantStepSize()
 
     # If we're using SaveAt(ts=...) then we can only compare the grads from:
