@@ -188,6 +188,13 @@ def test_reversible_explicit(stepsize_controller, saveat):
     base_solver = diffrax.Tsit5()
     solver = diffrax.Reversible(base_solver)
 
+    # If we're using SaveAt(ts=...) then we can only compare the grads from:
+    # Reversible solver + ReversibleAdjoint, and
+    # Reversible solver + RecursiveCheckpointAdjoint.
+    # as the interpolation scheme is different for Tsit5() and Reversible().
+    if saveat.subs.ts is not None:
+        base_solver = solver
+
     _compare_grads(
         (y0, args, terms),
         base_solver,
@@ -218,6 +225,13 @@ def test_reversible_sde(saveat):
     base_solver = diffrax.Heun()
     solver = diffrax.Reversible(base_solver)
     stepsize_controller = diffrax.ConstantStepSize()
+
+    # If we're using SaveAt(ts=...) then we can only compare the grads from:
+    # Reversible solver + ReversibleAdjoint, and
+    # Reversible solver + RecursiveCheckpointAdjoint.
+    # as the interpolation scheme is different for Tsit5() and Reversible().
+    if saveat.subs.ts is not None:
+        base_solver = solver
 
     _compare_grads(
         (y0, args, terms),

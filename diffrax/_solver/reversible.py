@@ -1,10 +1,11 @@
 from collections.abc import Callable
-from typing import cast, Optional, TypeAlias, TypeVar
+from typing import cast, ClassVar, Optional, TypeAlias, TypeVar
 
 from equinox.internal import ω
 from jaxtyping import PyTree
 
 from .._custom_types import Args, BoolScalarLike, DenseInfo, RealScalarLike, VF, Y
+from .._local_interpolation import LocalLinearInterpolation
 from .._solution import RESULTS, update_result
 from .._solver.base import (
     AbstractReversibleSolver,
@@ -79,10 +80,9 @@ class Reversible(
 
     solver: AbstractERK
     coupling_parameter: float = 0.999
-
-    @property
-    def interpolation_cls(self):  # pyright: ignore
-        return self.solver.interpolation_cls
+    interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
+        LocalLinearInterpolation
+    )
 
     @property
     def term_structure(self):
@@ -133,7 +133,7 @@ class Reversible(
     ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
         original_solver_state, z0 = solver_state
 
-        step_z0, _, dense_info, original_solver_state, result1 = self.solver.step(
+        step_z0, _, _, original_solver_state, result1 = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
         y1 = (self.coupling_parameter * (ω(y0) - ω(z0)) + ω(step_z0)).ω
@@ -144,6 +144,7 @@ class Reversible(
         z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
 
         solver_state = (original_solver_state, z1)
+        dense_info = dict(y0=y0, y1=y1)
         result = update_result(result1, result2)
 
         return y1, y_error, dense_info, solver_state, result
@@ -163,12 +164,13 @@ class Reversible(
             terms, t1, t0, y1, args, original_solver_state, True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
-        step_z0, _, dense_info, _, result2 = self.solver.step(
+        step_z0, _, _, _, result2 = self.solver.step(
             terms, t0, t1, z0, args, original_solver_state, True
         )
         y0 = ((1 / self.coupling_parameter) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
 
         solver_state = (original_solver_state, z0)
+        dense_info = dict(y0=y0, y1=y1)
         result = update_result(result1, result2)
 
         return y0, dense_info, solver_state, result
