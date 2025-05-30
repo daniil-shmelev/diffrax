@@ -19,6 +19,7 @@ from ._saveat import save_y, SaveAt, SubSaveAt
 from ._solution import RESULTS
 from ._solver import (
     AbstractItoSolver,
+    AbstractReversibleSolver,
     AbstractRungeKutta,
     AbstractSRK,
     AbstractStratonovichSolver,
@@ -1155,6 +1156,11 @@ class ReversibleAdjoint(AbstractAdjoint):
         event,
         **kwargs,
     ):
+        if not isinstance(solver, AbstractReversibleSolver):
+            raise ValueError(
+                "`ReversibleAdjoint` can only be used with an "
+                "`AbstractReversibleSolver`"
+            )
         if max_steps is None:
             raise ValueError(
                 "`max_steps=None` is incompatible with `ReversibleAdjoint`."
@@ -1168,19 +1174,18 @@ class ReversibleAdjoint(AbstractAdjoint):
             or (saveat.subs.fn is not save_y)
         ):
             raise ValueError(
-                """`ReversibleAdjoint` is only compatible with the following `SaveAt` 
-                properties: `t0`, `t1`, `ts`, `fn=save_y` (default).
-                """
+                "`ReversibleAdjoint` is only compatible with the following `SaveAt` "
+                "properties: `t0`, `t1`, `ts`, `fn=save_y` (default)."
             )
 
         if event is not None:
             raise NotImplementedError(
-                "`diffrax.ReversibleAdjoint` is not compatible with events."
+                "`ReversibleAdjoint` is not compatible with events."
             )
 
         if is_unsafe_sde(terms):
             raise ValueError(
-                "`adjoint=ReversibleAdjoint()` does not support `UnsafeBrownianPath`. "
+                "`ReversibleAdjoint` does not support `UnsafeBrownianPath`. "
                 "Consider using `VirtualBrownianTree` instead."
             )
 
