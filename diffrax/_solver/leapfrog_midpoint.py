@@ -31,6 +31,7 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
     [`diffrax.Midpoint`][]).
 
     !!! note
+
         This solver is algebraically reversible, meaning that the state at `t0` can be
         reconstructed (in closed form) from the state at `t1`. This allows exact
         gradient backpropagation in $O(n)$ time and $O(1)$ memory when using

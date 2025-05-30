@@ -392,11 +392,13 @@ class AbstractReversibleSolver(AbstractSolver[_SolverState]):
 
         **Returns:**
 
-        A tuple of three objects:
+        A tuple of four objects:
 
         - The value of the solution at `t0`.
         - Some dictionary of information that is passed to the solver's interpolation
             routine to calculate dense output. Note that this is assumed to be the same
             information returned on the forward step.
-        - The value of the solver state at `t1`.
+        - The value of the solver state at `t0`.
+        - An integer (corresponding to `diffrax.RESULTS`) indicating whether the step
+            happened successfully, or if (unusually) it failed for some reason.
         """
