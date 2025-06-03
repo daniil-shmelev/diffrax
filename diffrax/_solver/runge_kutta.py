@@ -357,6 +357,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
     """
 
     scan_kind: Union[None, Literal["lax", "checkpointed", "bounded"]] = None
+    disable_fsal: bool = False
 
     tableau: AbstractClassVar[Union[ButcherTableau, MultiButcherTableau]]
     calculate_jacobian: AbstractClassVar[CalculateJacobian]
@@ -399,6 +400,7 @@ class AbstractRungeKutta(AbstractAdaptiveSolver[_SolverState]):
         # FSAL implies evaluating just the vector field, since we need to contract
         # the same vector field evaluation against two different controls.
         fsal = fsal and not vf_expensive
+        fsal = fsal and not self.disable_fsal
         return vf_expensive, fsal
 
     def func(

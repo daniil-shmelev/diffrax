@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from typing import cast, ClassVar, Optional, TypeAlias, TypeVar
+from typing import cast, ClassVar, Optional
 
+import equinox as eqx
 from equinox.internal import ω
 from jaxtyping import PyTree
 
@@ -16,9 +17,7 @@ from .runge_kutta import AbstractERK
 
 
 ω = cast(Callable, ω)
-
-_BaseSolverState = TypeVar("_BaseSolverState")
-_SolverState: TypeAlias = tuple[_BaseSolverState, Y]
+_SolverState = Y
 
 
 class UReversible(
@@ -79,7 +78,7 @@ class UReversible(
     """
 
     solver: AbstractERK
-    coupling_parameter: float = 0.999
+    coupling_parameter: float
     interpolation_cls: ClassVar[Callable[..., LocalLinearInterpolation]] = (
         LocalLinearInterpolation
     )
@@ -106,6 +105,10 @@ class UReversible(
     def strong_order(self, terms: PyTree[AbstractTerm]) -> Optional[RealScalarLike]:
         return self.solver.strong_order(terms)
 
+    def __init__(self, solver: AbstractERK, coupling_parameter: float = 0.999):
+        self.solver = eqx.tree_at(lambda s: s.disable_fsal, solver, True)
+        self.coupling_parameter = coupling_parameter
+
     def init(
         self,
         terms: PyTree[AbstractTerm],
@@ -118,8 +121,7 @@ class UReversible(
             raise ValueError(
                 "`UReversible` is only compatible with `AbstractERK` base solvers."
             )
-        original_solver_init = self.solver.init(terms, t0, t1, y0, args)
-        return (original_solver_init, y0)
+        return y0
 
     def step(
         self,
@@ -131,19 +133,19 @@ class UReversible(
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, Optional[Y], DenseInfo, _SolverState, RESULTS]:
-        original_solver_state, z0 = solver_state
+        z0 = solver_state
 
-        step_z0, _, _, original_solver_state, result1 = self.solver.step(
-            terms, t0, t1, z0, args, original_solver_state, True
+        step_z0, _, _, _, result1 = self.solver.step(
+            terms, t0, t1, z0, args, None, True
         )
         y1 = (self.coupling_parameter * (ω(y0) - ω(z0)) + ω(step_z0)).ω
 
         step_y1, y_error, _, _, result2 = self.solver.step(
-            terms, t1, t0, y1, args, original_solver_state, True
+            terms, t1, t0, y1, args, None, True
         )
         z1 = (ω(y1) + ω(z0) - ω(step_y1)).ω
 
-        solver_state = (original_solver_state, z1)
+        solver_state = z1
         dense_info = dict(y0=y0, y1=y1)
         result = update_result(result1, result2)
 
@@ -159,17 +161,17 @@ class UReversible(
         solver_state: _SolverState,
         made_jump: BoolScalarLike,
     ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
-        original_solver_state, z1 = solver_state
-        step_y1, _, _, original_solver_state, result1 = self.solver.step(
-            terms, t1, t0, y1, args, original_solver_state, True
+        z1 = solver_state
+        step_y1, _, _, _, result1 = self.solver.step(
+            terms, t1, t0, y1, args, None, True
         )
         z0 = (ω(z1) - ω(y1) + ω(step_y1)).ω
         step_z0, _, _, _, result2 = self.solver.step(
-            terms, t0, t1, z0, args, original_solver_state, True
+            terms, t0, t1, z0, args, None, True
         )
         y0 = ((1 / self.coupling_parameter) * (ω(y1) - ω(step_z0)) + ω(z0)).ω
 
-        solver_state = (original_solver_state, z0)
+        solver_state = z0
         dense_info = dict(y0=y0, y1=y1)
         result = update_result(result1, result2)
 
