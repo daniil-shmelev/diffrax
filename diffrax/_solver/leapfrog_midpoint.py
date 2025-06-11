@@ -2,7 +2,8 @@ from collections.abc import Callable
 from typing import ClassVar
 from typing_extensions import TypeAlias
 
-import jax
+import jax.numpy as jnp
+import jax.tree_util as jtu
 from equinox.internal import ω
 from jaxtyping import PyTree
 
@@ -14,7 +15,7 @@ from .base import AbstractReversibleSolver
 
 
 _ErrorEstimate: TypeAlias = None
-_SolverState: TypeAlias = tuple[RealScalarLike, PyTree, RealScalarLike]
+_SolverState: TypeAlias = tuple[RealScalarLike, PyTree, RealScalarLike, RealScalarLike]
 
 
 # TODO: support arbitrary linear multistep methods
@@ -73,7 +74,7 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
         # be used with adaptive step sizes.
         dt = t1 - t0
         # Corresponds to making an explicit Euler step on the first step.
-        return t0, y0, dt
+        return t0, y0, dt, t0
 
     def step(
         self,
@@ -86,11 +87,11 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
         made_jump: BoolScalarLike,
     ) -> tuple[Y, _ErrorEstimate, DenseInfo, _SolverState, RESULTS]:
         del made_jump
-        tm1, ym1, dt = solver_state
+        tm1, ym1, dt, init_t0 = solver_state
         control = terms.contr(tm1, t1)
         y1 = (ym1**ω + terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
-        solver_state = (t0, y0, dt)
+        solver_state = (t0, y0, dt, init_t0)
         return y1, None, dense_info, solver_state, RESULTS.successful
 
     def backward_step(
@@ -104,17 +105,27 @@ class LeapfrogMidpoint(AbstractReversibleSolver):
         made_jump: BoolScalarLike,
     ) -> tuple[Y, DenseInfo, _SolverState, RESULTS]:
         del made_jump
-        t0, y0, dt = solver_state
+        t0, y0, dt, init_t0 = solver_state
         tm1 = t0 - dt
         control = terms.contr(tm1, t1)
         ym1 = (y1**ω - terms.vf_prod(t0, y0, args, control) ** ω).ω
         dense_info = dict(y0=y0, y1=y1)
+
         # On the last step we need to make sure our solver state is correct
         # (i.e. the state used on the forward). Otherwise, in `ReversibleAdjoint`,
         # we would take a local forward step from an incorrect `solver_state`.
-        solver_state = jax.lax.cond(
-            tm1 > 0, lambda _: (tm1, ym1, dt), lambda _: (t0, y0, dt), None
+        solver_state = (tm1, ym1, dt, init_t0)
+        init_solver_state = (init_t0, y0, dt, init_t0)
+        solver_state = jtu.tree_map(
+            lambda x, y: jnp.where(
+                tm1 > init_t0,
+                x,
+                y,
+            ),
+            solver_state,
+            init_solver_state,
         )
+
         return y0, dense_info, solver_state, RESULTS.successful
 
     def func(self, terms: AbstractTerm, t0: RealScalarLike, y0: Y, args: Args) -> VF:
