@@ -120,6 +120,8 @@ from ._solver import (
     StratonovichMilstein as StratonovichMilstein,
     Tsit5 as Tsit5,
     UReversible as UReversible,
+    EES25 as EES25,
+    EES27 as EES27,
 )
 from ._step_size_controller import (
     AbstractAdaptiveStepSizeController as AbstractAdaptiveStepSizeController,

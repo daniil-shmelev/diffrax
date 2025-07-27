@@ -57,3 +57,5 @@ from .srk import (
     StochasticButcherTableau as StochasticButcherTableau,
 )
 from .tsit5 import Tsit5 as Tsit5
+from .ees25 import EES25 as EES25
+from .ees27 import EES27 as EES27
